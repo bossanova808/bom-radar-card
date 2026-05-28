@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.6.6 - 2026-05-29
+
+### Fixed
+
+- Fixed excess whitespace under the card in Home Assistant masonry and sections views by making the layout size estimate match the rendered `map_height`.
+- Stopped playback controls from adding phantom layout height. Playback is overlaid on the map, so it no longer changes the reserved card height.
+- Fixed BOM capabilities loading so the request is only used from CORS-safe contexts. Home Assistant browser dashboards now go straight to generated current timestamps instead of attempting a known-blocked capabilities request before falling back.
+- Rebuilt the card when Home Assistant calls `setConfig()` after the map is already initialized, keeping editor/runtime config changes aligned with the rendered map.
+- Reset playback state during runtime rebuilds so a paused card cannot come back with stale controls or no visible way to resume.
+- Updated the embedded card banner version to match the package release.
+
+### Documentation
+
+- Clarified how `map_height`, `getCardSize()`, and sections-grid rows relate to each other.
+- Documented that unknown migrated keys are ignored, and that `overlay_transparency` and `show_scale` are not supported options for this card.
+- Updated release references and issue-template version hints for `v1.6.6`.
+
 ## v1.6.5 - 2026-05-11
 
 ### Fixed

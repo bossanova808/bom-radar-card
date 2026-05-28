@@ -11,7 +11,7 @@ This card exists as a modern replacement for older Home Assistant BOM radar card
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
 
-Current release: **v1.6.5**
+Current release: **v1.6.6**
 
 > [!IMPORTANT]
 > If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
@@ -23,11 +23,11 @@ Current release: **v1.6.5**
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution/reporting guidance.
 - See [SECURITY.md](SECURITY.md) before posting anything sensitive publicly.
 
-## Latest Fixes
+## Latest Release
 
-`v1.6.5` fixes a Home Assistant sidebar navigation lifecycle regression introduced in `v1.6.3` and present in `v1.6.4`. In affected dashboards, the card could draw its shell and controls but remain stuck loading after navigating away and back through Home Assistant's SPA sidebar.
+`v1.6.6` fixes excess blank space under the card in Home Assistant masonry and sections views. The rendered card height, `getCardSize()`, and sections-grid `getGridOptions()` now all derive from `map_height`, so playback controls no longer reserve extra layout space when they are drawn as an overlay on the map.
 
-The card now waits until it is connected, configured, and has Home Assistant state before initializing Leaflet. It also ignores stale async initialization work after disconnect/reconnect, cleans up partial maps, and invalidates the Leaflet map size after attach and resize. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+This release also avoids a known browser-origin block on BOM's capabilities XML endpoint. Home Assistant browser dashboards use generated current timestamps directly, while the published-timestamp parser remains available for CORS-safe contexts. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Support The Project
 
@@ -46,11 +46,11 @@ If the card saves you time and you want to support ongoing maintenance, you can 
 
 ## How It Works
 
-The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as map overlays. It first tries BOM's published WMTS time dimension, then falls back to per-layer generated timestamps if the capabilities response is unavailable, stale, or slow. The basemap is split into base tiles underneath the weather overlay and labels above it so suburb and city names stay readable.
+The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as map overlays. In Home Assistant browser dashboards, BOM's capabilities XML endpoint currently rejects requests that include a browser `Origin` header, so the card uses per-layer generated timestamps for normal operation. In CORS-safe contexts, the published WMTS time dimension parser is still available and rejects stale or stalled capability data before falling back. The basemap is split into base tiles underneath the weather overlay and labels above it so suburb and city names stay readable.
 
 **Data flow:**
-1. Try to read recent published timestamps from BOM's WMTS capabilities
-2. Reject stale or stalled capability data and generate current layer timestamps when needed
+1. Use generated current timestamps in normal Home Assistant browser dashboards
+2. Use fresh published WMTS capability timestamps only when the capabilities endpoint is reachable from a CORS-safe context
 3. Load PNG tiles for each selected timestamp at the current map view
 4. Animate through frames using the built-in playback controls
 5. Auto-refresh periodically so the card stays aligned with BOM updates
@@ -67,7 +67,7 @@ The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as
 
 ### Manual
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.6.5` at the time of writing)
+1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.6.6` at the time of writing)
 2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
 3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
 
@@ -89,7 +89,7 @@ That's it — it will use your Home Assistant location as the default center.
 | `center_latitude` | number | HA config | Map center latitude |
 | `center_longitude` | number | HA config | Map center longitude |
 | `zoom_level` | number | `7` | Map zoom level. Default range is 3–8, or 3–10 when `allow_overzoom` is enabled |
-| `map_height` | number | `300` | Card height in pixels |
+| `map_height` | number | `300` | Rendered map/card height in pixels |
 | `allow_overzoom` | boolean | `false` | Experimental closer-view mode. Allows display zoom up to 10 by scaling BOM's native z8 radar tiles |
 | `basemap_provider` | string | `carto` | Basemap provider: `carto`, `stadia`, or `esri` |
 | `basemap_style` | string | provider default | Basemap style for the selected provider |
@@ -98,7 +98,7 @@ That's it — it will use your Home Assistant location as the default center.
 | `chrome_opacity` | number | `1.0` | Opacity of the card chrome: controls, playback bar, layer badge, and panels |
 | `accent_color` | string | neutral UI default | Optional custom UI accent color for playback/progress/focus highlights |
 | `location_color` | string | HA accent | Optional custom GPS/home marker color |
-| `frame_count` | number | `9` | Number of animation frames (1–9) |
+| `frame_count` | number | `9` | Number of animation frames. Values are clamped to 1–9 |
 | `frame_delay` | number | `500` | Animation speed in milliseconds |
 | `restart_delay` | number | `1500` | Pause at end of loop in milliseconds |
 | `enabled_layers` | list | all layers | Restrict which BOM layers appear in the in-card layer switcher |
@@ -108,12 +108,22 @@ That's it — it will use your Home Assistant location as the default center.
 | `show_zoom` | boolean | `true` | Show zoom controls |
 | `show_recenter` | boolean | `true` | Show recenter button for home location |
 | `show_layer_switcher` | boolean | `true` | Show in-card layer switcher button |
-| `show_playback` | boolean | `true` | Show timeline controls |
+| `show_playback` | boolean | `true` | Show timeline controls overlaid on the map |
 | `show_legend` | boolean | `true` | Show BOM-style legend for rain rate and reflectivity layers |
 | `square_style` | boolean | `false` | Use square corners for the card chrome and controls |
 | `show_layer_label` | boolean | `false` | Show layer name badge |
 | `show_attribution` | boolean | `true` | Show map attribution |
 | `dark_basemap` | boolean | `true` | Legacy fallback for dark/light defaults. Still supported |
+
+### Sizing In Home Assistant
+
+`map_height` is the card's rendered height. The playback bar, layer button, recenter button, legend, marker, and optional layer label are map overlays, so they do not add extra layout height.
+
+Home Assistant uses `getCardSize()` for masonry dashboards and `getGridOptions()` for sections dashboards. Both layout hints are calculated from the same `map_height` value, with the sections view rounded to Home Assistant's 56 px row grid plus 8 px gaps. A small amount of rounding space can still appear in sections view because the Home Assistant grid is discrete, but enabling or disabling playback controls should not create a separate block of whitespace under the card.
+
+### Compatibility Notes
+
+The card ignores unknown YAML keys so existing dashboards keep loading when users migrate from another radar card. Use `radar_opacity` for the BOM weather overlay; older keys from other cards such as `overlay_transparency` are not used. `show_scale` is also not a supported option in this card.
 
 ### Example
 

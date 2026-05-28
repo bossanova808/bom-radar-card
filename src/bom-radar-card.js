@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = '1.6.4';
+const CARD_VERSION = '1.6.6';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 
@@ -1091,6 +1091,14 @@ function getChildrenByLocalName(parent, name) {
   return Array.from(parent?.children || []).filter((node) => node.localName === name);
 }
 
+function canFetchBomCapabilities() {
+  // BOM allows WMTS tile images from HA dashboards, but currently rejects
+  // browser capabilities fetches that include an Origin header.
+  return typeof window === 'undefined' &&
+    typeof fetch === 'function' &&
+    typeof DOMParser === 'function';
+}
+
 async function loadBomCapabilities() {
   const cacheAgeMs = 4 * 60 * 1000;
   if (capabilitiesCache && (Date.now() - capabilitiesFetchedAt) < cacheAgeMs) {
@@ -1127,7 +1135,7 @@ async function loadBomCapabilities() {
         }
         return xml;
       });
-      const xml = await Promise.race([requestPromise, timeoutPromise]);
+      const xml = await Promise.race([requestPromise(), timeoutPromise]);
       capabilitiesCache = xml;
       capabilitiesFetchedAt = Date.now();
       capabilitiesLoadPromise = null;
@@ -1207,14 +1215,16 @@ function hasFreshPublishedTimestamps(layerConfig, publishedTimes) {
 }
 
 async function getLayerTimestamps(layerConfig, count = 9) {
-  try {
-    const capabilities = await loadBomCapabilities();
-    const publishedTimes = extractLayerTimestamps(capabilities, layerConfig.id);
-    if (hasFreshPublishedTimestamps(layerConfig, publishedTimes)) {
-      return selectLayerTimestamps(layerConfig, publishedTimes, count);
+  if (canFetchBomCapabilities()) {
+    try {
+      const capabilities = await loadBomCapabilities();
+      const publishedTimes = extractLayerTimestamps(capabilities, layerConfig.id);
+      if (hasFreshPublishedTimestamps(layerConfig, publishedTimes)) {
+        return selectLayerTimestamps(layerConfig, publishedTimes, count);
+      }
+    } catch (err) {
+      console.warn(`BOM Radar Card: Falling back to generated timestamps for ${layerConfig.id}`, err);
     }
-  } catch (err) {
-    console.warn(`BOM Radar Card: Falling back to generated timestamps for ${layerConfig.id}`, err);
   }
 
   return generateFallbackTimestamps(layerConfig, count);
@@ -1382,10 +1392,7 @@ class BomRadarCard extends HTMLElement {
   }
 
   _getEstimatedCardHeight() {
-    const mapHeight = this._config?.map_height || 300;
-    const controlsHeight = this._config?.show_playback === false ? 0 : 64;
-    const cardPadding = 16;
-    return mapHeight + controlsHeight + cardPadding;
+    return this._config?.map_height || 300;
   }
 
   _getHomeCoordinates() {
@@ -1442,6 +1449,19 @@ class BomRadarCard extends HTMLElement {
       max_display_zoom: maxDisplayZoom,
       card_mod: config.card_mod,
     };
+    if (this._initialized || this._map) {
+      this._restart();
+      return;
+    }
+    this._initIfReady();
+  }
+
+  _restart() {
+    this._initToken += 1;
+    this._cleanupMap();
+    this._playing = true;
+    this._currentFrame = 0;
+    this._initialized = false;
     this._initIfReady();
   }
 
