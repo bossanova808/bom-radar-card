@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = '1.6.6';
+const CARD_VERSION = '1.7.0';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 
@@ -461,6 +461,8 @@ const MIN_MAP_ZOOM = 3;
 const MAX_BOM_NATIVE_ZOOM = 8;
 const MAX_DISPLAY_ZOOM = 8;
 const MAX_OVERZOOM_DISPLAY_ZOOM = 10;
+const BASEMAP_STYLE_AUTO = 'auto';
+const SUN_ENTITY_ID = 'sun.sun';
 
 const HALF_EXTENT = 20037508.342789244;
 const WORLD_EXTENT = HALF_EXTENT * 2;
@@ -593,6 +595,47 @@ function getDefaultBasemapStyle(provider, darkBasemap) {
   return darkBasemap ? 'dark' : 'light';
 }
 
+function getConfiguredBasemapStyle(config, provider) {
+  if (config?.basemap_style === BASEMAP_STYLE_AUTO) {
+    return BASEMAP_STYLE_AUTO;
+  }
+
+  const darkBasemap = config?.dark_basemap !== false;
+  return BASEMAP_PROVIDER_STYLES[provider]?.[config?.basemap_style]
+    ? config.basemap_style
+    : getDefaultBasemapStyle(provider, darkBasemap);
+}
+
+function getSunDaylightState(hass) {
+  const sun = hass?.states?.[SUN_ENTITY_ID];
+  if (sun?.state === 'above_horizon') return true;
+  if (sun?.state === 'below_horizon') return false;
+
+  const nextRising = Date.parse(sun?.attributes?.next_rising);
+  const nextSetting = Date.parse(sun?.attributes?.next_setting);
+  if (Number.isFinite(nextRising) && Number.isFinite(nextSetting)) {
+    return nextSetting < nextRising;
+  }
+
+  return null;
+}
+
+function shouldUseDarkAutoBasemap(config, hass) {
+  const isDaylight = getSunDaylightState(hass);
+  if (isDaylight === true) return false;
+  if (isDaylight === false) return true;
+  return config?.dark_basemap !== false;
+}
+
+function getResolvedBasemapStyle(config, hass) {
+  const provider = getBasemapProvider(config);
+  const configuredStyle = getConfiguredBasemapStyle(config, provider);
+  if (configuredStyle === BASEMAP_STYLE_AUTO) {
+    return getDefaultBasemapStyle(provider, shouldUseDarkAutoBasemap(config, hass));
+  }
+  return configuredStyle;
+}
+
 function isDarkBasemapStyle(provider, style) {
   return (
     (provider === 'carto' && style === 'dark') ||
@@ -602,19 +645,19 @@ function isDarkBasemapStyle(provider, style) {
 }
 
 function getBasemapStyleOptions(provider) {
-  return Object.entries(BASEMAP_PROVIDER_STYLES[getBasemapProvider({ basemap_provider: provider })] || {})
-    .map(([value, styleConfig]) => ({
-      value,
-      label: styleConfig.name,
-    }));
+  return [
+    { value: BASEMAP_STYLE_AUTO, label: 'Auto (day/night)' },
+    ...Object.entries(BASEMAP_PROVIDER_STYLES[getBasemapProvider({ basemap_provider: provider })] || {})
+      .map(([value, styleConfig]) => ({
+        value,
+        label: styleConfig.name,
+      })),
+  ];
 }
 
-function getBasemapConfig(config) {
-  const darkBasemap = config?.dark_basemap !== false;
+function getBasemapConfig(config, hass) {
   const provider = getBasemapProvider(config);
-  const style = BASEMAP_PROVIDER_STYLES[provider]?.[config?.basemap_style]
-    ? config.basemap_style
-    : getDefaultBasemapStyle(provider, darkBasemap);
+  const style = getResolvedBasemapStyle(config, hass);
   const styleConfig = BASEMAP_PROVIDER_STYLES[provider][style] || BASEMAP_PROVIDER_STYLES.carto.dark;
   const apiKey = typeof config?.basemap_api_key === 'string' ? config.basemap_api_key.trim() : '';
   const stadiaKeySuffix = apiKey ? `?api_key=${encodeURIComponent(apiKey)}` : '';
@@ -623,6 +666,8 @@ function getBasemapConfig(config) {
   if (provider === 'stadia') {
     return {
       ...styleConfig,
+      provider,
+      style,
       baseUrl: `${styleConfig.baseUrl}${stadiaKeySuffix}`,
     };
   }
@@ -630,12 +675,18 @@ function getBasemapConfig(config) {
   if (provider === 'esri') {
     return {
       ...styleConfig,
+      provider,
+      style,
       baseUrl: `${styleConfig.baseUrl}${esriTokenSuffix}`,
       labelsUrl: styleConfig.labelsUrl ? `${styleConfig.labelsUrl}${esriTokenSuffix}` : null,
     };
   }
 
-  return styleConfig;
+  return {
+    ...styleConfig,
+    provider,
+    style,
+  };
 }
 
 function getEnabledLayerKeys(config) {
@@ -1372,6 +1423,7 @@ class BomRadarCard extends HTMLElement {
     this._pendingZoomRebuild = false;
     this._previousDisplayZoom = null;
     this._initToken = 0;
+    this._resolvedBasemapStyle = null;
   }
 
   connectedCallback() {
@@ -1403,6 +1455,9 @@ class BomRadarCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
+    if (this._restartForAutoBasemapChange()) {
+      return;
+    }
     this._initIfReady();
   }
 
@@ -1410,6 +1465,7 @@ class BomRadarCard extends HTMLElement {
     if (!config) throw new Error('Invalid configuration');
     const basemapProvider = getBasemapProvider(config);
     const darkBasemap = config.dark_basemap !== false;
+    const basemapStyle = getConfiguredBasemapStyle(config, basemapProvider);
     const enabledLayers = getEnabledLayerKeys(config);
     const activeLayer = enabledLayers.includes(config.layer) ? config.layer : enabledLayers[0] || 'reflectivity';
     const allowOverzoom = config.allow_overzoom === true;
@@ -1435,9 +1491,7 @@ class BomRadarCard extends HTMLElement {
       map_height: config.map_height || 300,
       dark_basemap: darkBasemap,
       basemap_provider: basemapProvider,
-      basemap_style: BASEMAP_PROVIDER_STYLES[basemapProvider]?.[config.basemap_style]
-        ? config.basemap_style
-        : getDefaultBasemapStyle(basemapProvider, darkBasemap),
+      basemap_style: basemapStyle,
       basemap_api_key: config.basemap_api_key,
       marker_latitude: config.marker_latitude,
       marker_longitude: config.marker_longitude,
@@ -1454,6 +1508,29 @@ class BomRadarCard extends HTMLElement {
       return;
     }
     this._initIfReady();
+  }
+
+  _restartForAutoBasemapChange() {
+    if (
+      !this._initialized ||
+      !this._map ||
+      this._config.basemap_style !== BASEMAP_STYLE_AUTO ||
+      !this._resolvedBasemapStyle
+    ) {
+      return false;
+    }
+
+    if (getSunDaylightState(this._hass) === null) {
+      return false;
+    }
+
+    const nextResolvedStyle = getResolvedBasemapStyle(this._config, this._hass);
+    if (nextResolvedStyle === this._resolvedBasemapStyle) {
+      return false;
+    }
+
+    this._restart();
+    return true;
   }
 
   _restart() {
@@ -1558,7 +1635,8 @@ class BomRadarCard extends HTMLElement {
 
     const lat = this._config.center_latitude ?? this._hass?.config?.latitude ?? -33.87;
     const lon = this._config.center_longitude ?? this._hass?.config?.longitude ?? 151.21;
-    const basemapConfig = getBasemapConfig(this._config);
+    const basemapConfig = getBasemapConfig(this._config, this._hass);
+    this._resolvedBasemapStyle = basemapConfig.style;
 
     container.style.background = basemapConfig.background;
 
@@ -2032,9 +2110,7 @@ class BomRadarCardEditor extends HTMLElement {
   _render() {
     const cfg = this._config;
     const basemapProvider = getBasemapProvider(cfg);
-    const basemapStyle = BASEMAP_PROVIDER_STYLES[basemapProvider]?.[cfg.basemap_style]
-      ? cfg.basemap_style
-      : getDefaultBasemapStyle(basemapProvider, cfg.dark_basemap !== false);
+    const basemapStyle = getConfiguredBasemapStyle(cfg, basemapProvider);
     const enabledLayerKeys = getEnabledLayerKeys(cfg);
     const groupedLayers = getGroupedLayerEntries(enabledLayerKeys);
     this.shadowRoot.innerHTML = `
@@ -2287,10 +2363,14 @@ class BomRadarCardEditor extends HTMLElement {
     const basemapStyle = get('basemap_style');
     if (basemapStyle) {
       const nextProvider = getBasemapProvider(config);
-      config.basemap_style = BASEMAP_PROVIDER_STYLES[nextProvider]?.[basemapStyle.value]
-        ? basemapStyle.value
-        : getDefaultBasemapStyle(nextProvider, config.dark_basemap !== false);
-      config.dark_basemap = isDarkBasemapStyle(nextProvider, config.basemap_style);
+      if (basemapStyle.value === BASEMAP_STYLE_AUTO) {
+        config.basemap_style = BASEMAP_STYLE_AUTO;
+      } else {
+        config.basemap_style = BASEMAP_PROVIDER_STYLES[nextProvider]?.[basemapStyle.value]
+          ? basemapStyle.value
+          : getDefaultBasemapStyle(nextProvider, config.dark_basemap !== false);
+        config.dark_basemap = isDarkBasemapStyle(nextProvider, config.basemap_style);
+      }
     }
 
     const basemapApiKey = get('basemap_api_key');

@@ -11,7 +11,7 @@ This card exists as a modern replacement for older Home Assistant BOM radar card
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
 
-Current release: **v1.6.6**
+Current release: **v1.7.0**
 
 > [!IMPORTANT]
 > If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
@@ -25,9 +25,9 @@ Current release: **v1.6.6**
 
 ## Latest Release
 
-`v1.6.6` fixes excess blank space under the card in Home Assistant masonry and sections views. The rendered card height, `getCardSize()`, and sections-grid `getGridOptions()` now all derive from `map_height`, so playback controls no longer reserve extra layout space when they are drawn as an overlay on the map.
+`v1.7.0` adds optional auto day/night basemap switching. Set `basemap_style: auto` and the card will use Home Assistant's `sun.sun` state to show the provider's light default basemap while the sun is above the horizon and its dark default basemap after sunset.
 
-This release also avoids a known browser-origin block on BOM's capabilities XML endpoint. Home Assistant browser dashboards use generated current timestamps directly, while the published-timestamp parser remains available for CORS-safe contexts. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+Manual basemap styles remain unchanged, and auto mode falls back to the legacy `dark_basemap` default if `sun.sun` is unavailable. See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Support The Project
 
@@ -67,7 +67,7 @@ The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as
 
 ### Manual
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.6.6` at the time of writing)
+1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.7.0` at the time of writing)
 2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
 3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
 
@@ -92,7 +92,7 @@ That's it — it will use your Home Assistant location as the default center.
 | `map_height` | number | `300` | Rendered map/card height in pixels |
 | `allow_overzoom` | boolean | `false` | Experimental closer-view mode. Allows display zoom up to 10 by scaling BOM's native z8 radar tiles |
 | `basemap_provider` | string | `carto` | Basemap provider: `carto`, `stadia`, or `esri` |
-| `basemap_style` | string | provider default | Basemap style for the selected provider |
+| `basemap_style` | string | provider default | Basemap style for the selected provider. Set to `auto` for day/night switching |
 | `basemap_api_key` | string | none | Optional provider API key. Not used for CARTO |
 | `radar_opacity` | number | `0.7` | Weather overlay opacity (0.1–1.0) |
 | `chrome_opacity` | number | `1.0` | Opacity of the card chrome: controls, playback bar, layer badge, and panels |
@@ -143,6 +143,18 @@ show_marker: true
 show_layer_switcher: true
 square_style: false
 ```
+
+### Auto Day/Night Basemap
+
+Set `basemap_style: auto` to have the card use a light default basemap while the sun is above the horizon and a dark default basemap after sunset:
+
+```yaml
+type: custom:bom-radar-card
+basemap_provider: carto
+basemap_style: auto
+```
+
+Auto mode uses Home Assistant's `sun.sun` state, so the switch follows the sunrise and sunset times for your Home Assistant location. If `sun.sun` is unavailable, the card falls back to the legacy `dark_basemap` default.
 
 ### Optional Overzoom
 

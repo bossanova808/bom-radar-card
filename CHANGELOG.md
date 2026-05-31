@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.7.0 - 2026-05-31
+
+### Added
+
+- Added optional `basemap_style: auto` mode, which uses Home Assistant's `sun.sun` state to switch between the provider's light daytime basemap and dark nighttime basemap.
+- Added visual editor support for the auto day/night basemap style.
+
+### Documentation
+
+- Documented the new auto day/night basemap mode and updated release references for `v1.7.0`.
+
 ## v1.6.6 - 2026-05-29
 
 ### Fixed
