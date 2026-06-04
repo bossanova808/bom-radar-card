@@ -11,7 +11,7 @@ This card exists as a modern replacement for older Home Assistant BOM radar card
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
 
-Current release: **v1.7.0**
+Current release: **v1.8.0**
 
 > [!IMPORTANT]
 > If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
@@ -25,9 +25,9 @@ Current release: **v1.7.0**
 
 ## Latest Release
 
-`v1.7.0` adds optional auto day/night basemap switching. Set `basemap_style: auto` and the card will use Home Assistant's `sun.sun` state to show the provider's light default basemap while the sun is above the horizon and its dark default basemap after sunset.
+`v1.8.0` switches the default no-key basemap to BOM's own map tiles, adds optional BOM reference overlays, adds the BOM daily maximum UV layer, and hardens card refresh, config parsing, and tile-loader behavior.
 
-Manual basemap styles remain unchanged, and auto mode falls back to the legacy `dark_basemap` default if `sun.sun` is unavailable. See [CHANGELOG.md](CHANGELOG.md) for release notes.
+The default `basemap_style: auto` still follows Home Assistant's `sun.sun` state for day/night switching. Users who prefer the previous CARTO look can keep it with `basemap_provider: carto`. See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
 ## Support The Project
 
@@ -41,12 +41,13 @@ If the card saves you time and you want to support ongoing maintenance, you can 
 - **In-card layer switcher** so people can move between available layers without reconfiguring the card
 - **Built-in radar legend** for rain rate and reflectivity layers
 - **Configurable presentation** with toggles for playback, legend, zoom, recenter, layer switcher, marker, attribution, and more
-- **Readable split-label basemap** so suburb and city names stay visible through the weather overlays
+- **Optional BOM reference overlays** for state borders, forecast districts, coastal areas, drainage divisions, railways, and lakes
+- **BOM-native default basemap** with day/night styles, plus optional CARTO, Stadia Maps, and Esri providers
 - **Visual editor support** for normal day-to-day configuration in Home Assistant
 
 ## How It Works
 
-The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as map overlays. In Home Assistant browser dashboards, BOM's capabilities XML endpoint currently rejects requests that include a browser `Origin` header, so the card uses per-layer generated timestamps for normal operation. In CORS-safe contexts, the published WMTS time dimension parser is still available and rejects stale or stalled capability data before falling back. The basemap is split into base tiles underneath the weather overlay and labels above it so suburb and city names stay readable.
+The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as map overlays. In Home Assistant browser dashboards, BOM's capabilities XML endpoint currently rejects requests that include a browser `Origin` header, so the card uses per-layer generated timestamps for normal operation. In CORS-safe contexts, the published WMTS time dimension parser is still available and rejects stale or stalled capability data before falling back. The basemap is rendered underneath the weather overlay; providers with separate label tiles keep suburb and city names above the overlay where available.
 
 **Data flow:**
 1. Use generated current timestamps in normal Home Assistant browser dashboards
@@ -67,7 +68,7 @@ The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as
 
 ### Manual
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.7.0` at the time of writing)
+1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.8.0` at the time of writing)
 2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
 3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
 
@@ -89,11 +90,13 @@ That's it — it will use your Home Assistant location as the default center.
 | `center_latitude` | number | HA config | Map center latitude |
 | `center_longitude` | number | HA config | Map center longitude |
 | `zoom_level` | number | `7` | Map zoom level. Default range is 3–8, or 3–10 when `allow_overzoom` is enabled |
-| `map_height` | number | `300` | Rendered map/card height in pixels |
+| `map_height` | number | `300` | Rendered map/card height in pixels. YAML values are capped at 4096 px to protect dashboard clients |
 | `allow_overzoom` | boolean | `false` | Experimental closer-view mode. Allows display zoom up to 10 by scaling BOM's native z8 radar tiles |
-| `basemap_provider` | string | `carto` | Basemap provider: `carto`, `stadia`, or `esri` |
-| `basemap_style` | string | provider default | Basemap style for the selected provider. Set to `auto` for day/night switching |
-| `basemap_api_key` | string | none | Optional provider API key. Not used for CARTO |
+| `basemap_provider` | string | `bom` | Basemap provider: `bom`, `carto`, `stadia`, or `esri` |
+| `basemap_style` | string | provider default | Basemap style for the selected provider. Set to `auto` for day/night switching on providers with light/dark pairs |
+| `basemap_api_key` | string | none | Optional provider API key. Not used for BOM or CARTO |
+| `show_bom_boundaries` | boolean | `false` | Backward-compatible shortcut for `bom_reference_layers: [state_borders]` |
+| `bom_reference_layers` | list | none | Optional BOM reference overlays: `state_borders`, `coastal_areas`, `forecast_districts`, `drainage_divisions`, `railways`, `lakes` |
 | `radar_opacity` | number | `0.7` | Weather overlay opacity (0.1–1.0) |
 | `chrome_opacity` | number | `1.0` | Opacity of the card chrome: controls, playback bar, layer badge, and panels |
 | `accent_color` | string | neutral UI default | Optional custom UI accent color for playback/progress/focus highlights |
@@ -134,8 +137,8 @@ center_longitude: 151.21
 zoom_level: 7
 layer: reflectivity
 map_height: 350
-basemap_provider: carto
-basemap_style: dark
+basemap_provider: bom
+basemap_style: auto
 frame_delay: 400
 radar_opacity: 0.7
 chrome_opacity: 0.9
@@ -150,11 +153,32 @@ Set `basemap_style: auto` to have the card use a light default basemap while the
 
 ```yaml
 type: custom:bom-radar-card
-basemap_provider: carto
+basemap_provider: bom
 basemap_style: auto
 ```
 
-Auto mode uses Home Assistant's `sun.sun` state, so the switch follows the sunrise and sunset times for your Home Assistant location. If `sun.sun` is unavailable, the card falls back to the legacy `dark_basemap` default.
+Auto mode uses Home Assistant's `sun.sun` state, so the switch follows the sunrise and sunset times for your Home Assistant location. If `sun.sun` is unavailable, the card falls back to the legacy `dark_basemap` default. The default BOM provider uses `basemap_default` during the day and the verified `basemap_dark` MapServer tiles after sunset.
+
+### BOM Reference Overlays
+
+If you want BOM's own map reference tiles drawn above the weather layer, enable the optional boundaries overlay:
+
+```yaml
+type: custom:bom-radar-card
+show_bom_boundaries: true
+```
+
+For more map context, choose one or more verified BOM reference overlays:
+
+```yaml
+type: custom:bom-radar-card
+bom_reference_layers:
+  - state_borders
+  - forecast_districts
+  - coastal_areas
+```
+
+Available reference overlays are `state_borders`, `coastal_areas`, `forecast_districts`, `drainage_divisions`, `railways`, and `lakes`. They use BOM's public MapServer image tiles and are off by default so existing dashboards keep their current appearance.
 
 ### Optional Overzoom
 
@@ -171,13 +195,16 @@ This does **not** add extra native BOM radar detail. It simply allows the card t
 
 ### Basemap Providers
 
-- `carto`: default option, no API key required
+- `bom`: default option, BOM-native light/dark map tiles, no API key required
+- `carto`: no API key required
 - `stadia`: optional styles including smoother road/terrain maps and satellite imagery
 - `esri`: optional imagery/topographic styles
 
+To keep the previous CARTO look after upgrading, set `basemap_provider: carto` and choose the fixed `basemap_style` you prefer, such as `dark` or `light` (CARTO Voyager).
+
 `basemap_api_key` is optional in the config, but Stadia Maps and Esri may require a valid key depending on the selected style and the environment the card is hosted from.
 
-Both Stadia Maps and Esri offer free-tier access, but the exact limits and which styles are included can vary by provider plan. CARTO remains the safest no-key default.
+BOM and CARTO are the no-key options. The BOM provider uses public BOM map tile services observed and verified against the current BOM map stack, including `basemap_default` and `basemap_dark`. Both Stadia Maps and Esri offer free-tier access, but the exact limits and which styles are included can vary by provider plan.
 
 Important notes:
 
@@ -188,7 +215,7 @@ Important notes:
 
 ### Getting Basemap Provider Keys
 
-`carto` does not need a key.
+`bom` and `carto` do not need a key.
 
 For `stadia` and `esri`, the card uses the single `basemap_api_key` field. Only the currently selected provider uses that key.
 
@@ -282,6 +309,7 @@ enabled_layers:
 | `relative_humidity` | Humidity & UV | Relative humidity |
 | `dew_point` | Humidity & UV | Dew point temperature |
 | `uv_index` | Humidity & UV | UV Index |
+| `uv_max_daily` | Humidity & UV | Daily maximum UV Index |
 | `thunderstorms` | Significant weather | Thunderstorm overlay |
 | `fog` | Significant weather | Fog overlay |
 
@@ -297,7 +325,7 @@ The popular `weather-radar-card` uses RainViewer, which reprocesses BOM data and
 
 - **Higher fidelity radar imagery**
 - **Less delay between BOM updates and what you see**
-- **More BOM-native layers**, including reflectivity, observed rainfall, forecast rain, wind, waves, temperature, humidity, and UV
+- **More BOM-native layers**, including reflectivity, observed rainfall, forecast rain, wind, waves, temperature, humidity, UV, and significant-weather overlays
 - **Australian-specific bounds and tile handling** instead of a generic global weather view
 
 ## Technical Details
@@ -307,14 +335,14 @@ The popular `weather-radar-card` uses RainViewer, which reprocesses BOM data and
 - **Projection**: BOM's Australian-extent WMTS TileMatrixSets based on EPSG:3857
 - **Max zoom**: Level 8 by default, or optional display zoom up to 10 with experimental overzoom enabled
 - **Map library**: Leaflet.js 1.9.4 (loaded from CDN)
-- **Basemap**: CARTO Dark Matter / Voyager split into base and labels layers
+- **Basemap**: BOM native default/dark map tiles by default, plus optional CARTO, Stadia Maps, and Esri providers
 - **Update cycle**: 5 minutes
 - **Bundle size**: ~60KB minified
 
 ## Credits
 
 - Radar data: [Bureau of Meteorology](http://www.bom.gov.au) (Commonwealth of Australia)
-- Basemap: [CARTO](https://carto.com/)
+- Basemaps: [Bureau of Meteorology](http://www.bom.gov.au), [CARTO](https://carto.com/), Stadia Maps, and Esri depending on configuration
 - Map library: [Leaflet.js](https://leafletjs.com/)
 
 ## License

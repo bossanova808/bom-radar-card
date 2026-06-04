@@ -3,6 +3,8 @@ node_modules/
 
 # Local agent/workspace files
 AGENTS.md
+.codex
+.deepsec/
 
 # Local verification harnesses
 test/

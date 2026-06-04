@@ -1,5 +1,32 @@
 # Changelog
 
+## v1.8.0 - 2026-06-05
+
+### Added
+
+- Added a no-key `bom` basemap provider using the public BOM `basemap_default` and `basemap_dark` MapServer tiles verified against the current BOM map stack.
+- Added `uv_max_daily`, a BOM-native daily maximum UV Index layer verified against the public WMTS endpoint.
+- Added optional `show_bom_boundaries` support using BOM's public `state_borders` MapServer image tiles.
+- Added optional `bom_reference_layers` support for verified BOM MapServer reference overlays: state borders, coastal areas, forecast districts, drainage divisions, railways, and lakes.
+
+### Changed
+
+- Changed the default basemap provider to BOM, with day/night auto mode using BOM's default and dark basemaps unless a provider/style is configured.
+- Users who want the previous CARTO look can keep it by setting `basemap_provider: carto` and the preferred fixed `basemap_style`.
+
+### Fixed
+
+- Hardened refresh/playback handling so data refreshes stop and resume animation cleanly, ignore stale rebuilds, guard invalid frame indexes, and clear map-layer state during cleanup.
+- Sanitized numeric YAML/editor config values before runtime use, including map height, zoom, opacity, frame count, and animation delays.
+- Hardened provider/style/layer registry lookups so inherited object keys cannot be treated as valid configuration.
+- Fixed Leaflet loader retry handling after a transient CDN/script-load failure.
+- Hardened the CI workflow with read-only token permissions and pinned action commit references.
+
+### Documentation
+
+- Documented the BOM-native basemap provider.
+- Documented the optional BOM reference overlays.
+
 ## v1.7.0 - 2026-05-31
 
 ### Added

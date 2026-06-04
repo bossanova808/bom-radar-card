@@ -33,7 +33,7 @@ body:
     attributes:
       label: Card version
       description: Which BOM Radar Card version are you using?
-      placeholder: v1.7.0
+      placeholder: v1.8.0
     validations:
       required: true
   - type: input
