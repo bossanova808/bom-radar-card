@@ -6,7 +6,7 @@
  * License: MIT
  */
 
-const CARD_VERSION = '1.8.0';
+const CARD_VERSION = '1.9.0';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 
@@ -426,9 +426,33 @@ const BOM_LAYERS = {
     fallbackLagMinutes: 0,
     initialFrame: 'first',
   },
+  'snow': {
+    id: 'atm_surf_air_weather_icon_snow_code_3hourly',
+    name: 'Snow',
+    category: 'Significant weather',
+    unit: 'icon',
+    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
+    legendType: 'numerical',
+    timeMode: 'forecast',
+    fallbackStepMinutes: 180,
+    fallbackLagMinutes: 0,
+    initialFrame: 'first',
+  },
   'fog': {
     id: 'atm_surf_air_weather_icon_fog_code_3hourly',
     name: 'Fog',
+    category: 'Significant weather',
+    unit: 'icon',
+    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
+    legendType: 'numerical',
+    timeMode: 'forecast',
+    fallbackStepMinutes: 180,
+    fallbackLagMinutes: 0,
+    initialFrame: 'first',
+  },
+  'frost': {
+    id: 'atm_surf_air_weather_icon_frost_code_3hourly',
+    name: 'Frost',
     category: 'Significant weather',
     unit: 'icon',
     tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',

@@ -11,7 +11,7 @@ This card exists as a modern replacement for older Home Assistant BOM radar card
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
 
-Current release: **v1.8.0**
+Current release: **v1.9.0**
 
 > [!IMPORTANT]
 > If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
@@ -25,7 +25,7 @@ Current release: **v1.8.0**
 
 ## Latest Release
 
-`v1.8.0` switches the default no-key basemap to BOM's own map tiles, adds optional BOM reference overlays, adds the BOM daily maximum UV layer, and hardens card refresh, config parsing, and tile-loader behavior.
+`v1.9.0` adds BOM-native Snow and Frost significant-weather forecast overlays, verified against the current BOM WMTS capabilities and live browser rendering.
 
 The default `basemap_style: auto` still follows Home Assistant's `sun.sun` state for day/night switching. Users who prefer the previous CARTO look can keep it with `basemap_provider: carto`. See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
@@ -37,7 +37,7 @@ If the card saves you time and you want to support ongoing maintenance, you can 
 
 - **Native BOM WMTS tiles** from `api.bom.gov.au`, with no API key required
 - **Interactive map and animation** with zoom, pan, play/pause, scrubbing, and automatic refresh
-- **Broad BOM layer support** including observed rain, forecast rain, wind, waves, temperature, humidity, UV, thunderstorms, and fog
+- **Broad BOM layer support** including observed rain, forecast rain, wind, waves, temperature, humidity, UV, thunderstorms, snow, fog, and frost
 - **In-card layer switcher** so people can move between available layers without reconfiguring the card
 - **Built-in radar legend** for rain rate and reflectivity layers
 - **Configurable presentation** with toggles for playback, legend, zoom, recenter, layer switcher, marker, attribution, and more
@@ -68,7 +68,7 @@ The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as
 
 ### Manual
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.8.0` at the time of writing)
+1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.9.0` at the time of writing)
 2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
 3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
 
@@ -311,7 +311,9 @@ enabled_layers:
 | `uv_index` | Humidity & UV | UV Index |
 | `uv_max_daily` | Humidity & UV | Daily maximum UV Index |
 | `thunderstorms` | Significant weather | Thunderstorm overlay |
+| `snow` | Significant weather | Snow overlay |
 | `fog` | Significant weather | Fog overlay |
+| `frost` | Significant weather | Frost overlay |
 
 `show_legend` currently applies to the rain rate and reflectivity layers, where BOM exposes a qualitative rain-intensity legend. Forecast, accumulation, wind, waves, temperature, humidity, UV, and significant-weather layers still render without an inline legend for now.
 

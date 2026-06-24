@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.9.0 - 2026-06-25
+
+### Added
+
+- Added BOM-native Snow and Frost significant-weather WMTS layers.
+
+### Validation
+
+- Verified Snow and Frost against the current BOM WMTS capabilities, live PNG tile content, and browser rendering through the bundled card.
+
 ## v1.8.0 - 2026-06-05
 
 ### Added
