@@ -52,7 +52,7 @@ export function collectLightningStrikes(hass, cap = DEFAULT_STRIKE_CAP) {
     strikes.push({ id, lat, lon, ts: parseStrikeTimestamp(state) });
   }
   strikes.sort((a, b) => b.ts - a.ts);
-  return strikes.length > cap ? strikes.slice(0, cap) : strikes;
+  return strikes.length > cap ? strikes.slice(0, cap) : strikes.slice();
 }
 
 function clamp01(value) {

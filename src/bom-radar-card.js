@@ -1609,7 +1609,9 @@ class LightningOverlay {
     const now = Date.now();
     const current = new Set();
     let changed = false;
-    for (const s of strikes) {
+    // strikes is newest-first; add oldest-first so the newest paints on top (canvas draw order = insertion order)
+    for (let i = strikes.length - 1; i >= 0; i--) {
+      const s = strikes[i];
       current.add(s.id);
       if (!this._strikes.has(s.id)) {
         this._addStrike(s, now);
