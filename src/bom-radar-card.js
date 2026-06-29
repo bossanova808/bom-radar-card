@@ -2490,7 +2490,12 @@ class BomRadarCardEditor extends HTMLElement {
   }
 
   set hass(hass) {
+    const wasLoaded = this._blitzLoaded;
     this._hass = hass;
+    this._blitzLoaded = isBlitzortungLoaded(hass);
+    if (this._config && this._blitzLoaded !== wasLoaded) {
+      this._render();
+    }
   }
 
   setConfig(config) {
@@ -2505,6 +2510,7 @@ class BomRadarCardEditor extends HTMLElement {
     const enabledLayerKeys = getEnabledLayerKeys(cfg);
     const groupedLayers = getGroupedLayerEntries(enabledLayerKeys);
     const bomReferenceLayerKeys = getBomReferenceLayerKeys(cfg);
+    const blitzLoaded = isBlitzortungLoaded(this._hass);
     const additionalBomReferenceLayers = Object.entries(BOM_REFERENCE_OVERLAY_STYLES)
       .filter(([key]) => key !== 'state_borders');
     this.shadowRoot.innerHTML = `
@@ -2683,6 +2689,20 @@ class BomRadarCardEditor extends HTMLElement {
         </div>
 
         <div class="section">
+          <div class="section-title">Lightning</div>
+          ${this._toggle('show_lightning', 'Lightning strikes (Blitzortung)', cfg.show_lightning !== false)}
+          ${blitzLoaded ? (cfg.show_lightning !== false ? `
+            <div class="row">
+              <label>Fade window (minutes)</label>
+              <input type="number" id="lightning_fade_minutes" min="1" max="120" value="${escapeHtml(cfg.lightning_fade_minutes ?? 30)}">
+            </div>
+            ${this._toggle('lightning_pulse', 'Pulse on new strike', cfg.lightning_pulse !== false)}
+          ` : '') : `
+            <div class="help-text">Requires the <a href="https://github.com/mrk-its/homeassistant-blitzortung" target="_blank" rel="noreferrer">Blitzortung integration</a>. Not detected on this Home Assistant instance.</div>
+          `}
+        </div>
+
+        <div class="section">
           <div class="section-title">Marker Position</div>
           <div class="row-inline">
             <div class="row">
@@ -2704,6 +2724,7 @@ class BomRadarCardEditor extends HTMLElement {
       'zoom_level', 'map_height', 'center_latitude', 'center_longitude',
       'frame_delay', 'restart_delay', 'radar_opacity', 'chrome_opacity', 'frame_count',
       'marker_latitude', 'marker_longitude', 'accent_color', 'location_color',
+      'lightning_fade_minutes',
     ];
     fields.forEach(id => {
       const el = this.shadowRoot.getElementById(id);
@@ -2713,6 +2734,7 @@ class BomRadarCardEditor extends HTMLElement {
     const toggles = [
       'show_marker', 'show_zoom', 'show_recenter', 'show_layer_switcher', 'show_playback',
       'show_legend', 'show_bom_boundaries', 'square_style', 'show_layer_label', 'show_attribution', 'allow_overzoom', 'use_custom_accent_color', 'use_custom_location_color',
+      'show_lightning', 'lightning_pulse',
     ];
     toggles.forEach(id => {
       const el = this.shadowRoot.getElementById(id);
@@ -2823,6 +2845,7 @@ class BomRadarCardEditor extends HTMLElement {
       center_latitude: 'float', center_longitude: 'float',
       marker_latitude: 'float', marker_longitude: 'float',
       radar_opacity: 'float', chrome_opacity: 'float',
+      lightning_fade_minutes: 'int',
     };
 
     Object.entries(numFields).forEach(([id, type]) => {
@@ -2838,6 +2861,7 @@ class BomRadarCardEditor extends HTMLElement {
     const toggleFields = [
       'show_marker', 'show_zoom', 'show_recenter', 'show_layer_switcher', 'show_playback',
       'show_legend', 'show_bom_boundaries', 'square_style', 'show_layer_label', 'show_attribution', 'allow_overzoom',
+      'show_lightning', 'lightning_pulse',
     ];
     toggleFields.forEach(id => {
       const el = get(id);
