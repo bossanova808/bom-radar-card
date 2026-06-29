@@ -1610,8 +1610,14 @@ class LightningOverlay {
     const current = new Set();
     let changed = false;
     // strikes is newest-first; add oldest-first so the newest paints on top (canvas draw order = insertion order)
+    const fadeMs = this._fadeSec * 1000;
     for (let i = strikes.length - 1; i >= 0; i--) {
       const s = strikes[i];
+      // Skip strikes already past the fade window. The Blitzortung integration can
+      // retain geo_location entities longer than lightning_fade_minutes; without this,
+      // every hass tick would re-add then immediately remove markers for those stale
+      // entities (churn that scales with the number of expired-but-present strikes).
+      if (now - s.ts >= fadeMs) continue;
       current.add(s.id);
       if (!this._strikes.has(s.id)) {
         this._addStrike(s, now);
