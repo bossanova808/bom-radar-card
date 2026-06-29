@@ -6,6 +6,8 @@
  * License: MIT
  */
 
+import { collectLightningStrikes, colorForAge, isBlitzortungLoaded, opacityForAge, pulseScale } from './lightning.js';
+
 const CARD_VERSION = '1.9.0';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
@@ -1556,6 +1558,155 @@ function formatLayerTimestamp(layerConfig, timestampValue) {
 }
 
 
+const LIGHTNING_PANE = 'bomLightning';
+const LIGHTNING_PANE_Z = 450;
+const LIGHTNING_FRESH_SEC = 30;
+const LIGHTNING_AGE_TICK_MS = 30000;
+const LIGHTNING_PULSE_MS = 600;
+const LIGHTNING_PULSE_MAX_STRIKES = 300;
+const LIGHTNING_HALO_RATIO = 2.2;
+const LIGHTNING_ATTRIBUTION = 'Lightning &copy; <a href="https://www.blitzortung.org">Blitzortung.org</a>';
+
+function prefersReducedMotion() {
+  return typeof window !== 'undefined'
+    && typeof window.matchMedia === 'function'
+    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+// Live Blitzortung lightning overlay. Renders strikes as canvas circleMarkers in a
+// dedicated pane above the radar; ages/fades them on a timer; pulses fresh ones once.
+class LightningOverlay {
+  constructor(L, map, options = {}) {
+    this._L = L;
+    this._map = map;
+    this._fadeSec = Math.max(60, (options.fadeMinutes ?? 30) * 60);
+    this._pulseEnabled = options.pulse !== false && !prefersReducedMotion();
+    this._dotSize = options.dotSize ?? 5;
+    this._cap = options.cap ?? 750;
+    this._strikes = new Map(); // id -> { ts, marker, halo, pulseStart }
+    this._ageTimer = null;
+    this._rafId = null;
+    this._renderer = null;
+    this._layer = null;
+  }
+
+  start(hass) {
+    const L = this._L;
+    if (!this._map.getPane(LIGHTNING_PANE)) {
+      const pane = this._map.createPane(LIGHTNING_PANE);
+      pane.style.zIndex = String(LIGHTNING_PANE_Z);
+      pane.style.pointerEvents = 'none';
+    }
+    this._renderer = L.canvas({ pane: LIGHTNING_PANE, padding: 0.5 });
+    this._layer = L.layerGroup([]).addTo(this._map);
+    this._ageTimer = setInterval(() => this._refreshAges(), LIGHTNING_AGE_TICK_MS);
+    this.updateHass(hass);
+  }
+
+  updateHass(hass) {
+    if (!this._layer) return;
+    const strikes = collectLightningStrikes(hass, this._cap);
+    const now = Date.now();
+    const current = new Set();
+    let changed = false;
+    for (const s of strikes) {
+      current.add(s.id);
+      if (!this._strikes.has(s.id)) {
+        this._addStrike(s, now);
+        changed = true;
+      }
+    }
+    for (const id of this._strikes.keys()) {
+      if (!current.has(id)) {
+        this._removeStrike(id);
+        changed = true;
+      }
+    }
+    if (changed) this._restyleAll(now);
+  }
+
+  _addStrike(s, now) {
+    const L = this._L;
+    const ageSec = Math.max(0, (now - s.ts) / 1000);
+    const fresh = ageSec < LIGHTNING_FRESH_SEC;
+    const common = { renderer: this._renderer, pane: LIGHTNING_PANE, interactive: false, stroke: false };
+    const entry = { ts: s.ts, marker: null, halo: null, pulseStart: null };
+    if (fresh) {
+      entry.halo = L.circleMarker([s.lat, s.lon], {
+        ...common, radius: this._dotSize * LIGHTNING_HALO_RATIO, fillColor: '#ffffff', fillOpacity: 0.22,
+      }).addTo(this._layer);
+    }
+    entry.marker = L.circleMarker([s.lat, s.lon], {
+      ...common, radius: this._dotSize, fillColor: '#ffffff', fillOpacity: 1,
+    }).addTo(this._layer);
+    if (fresh && this._pulseEnabled && this._strikes.size < LIGHTNING_PULSE_MAX_STRIKES) {
+      entry.pulseStart = now;
+      this._ensurePulseLoop();
+    }
+    this._strikes.set(s.id, entry);
+  }
+
+  _removeStrike(id) {
+    const entry = this._strikes.get(id);
+    if (!entry) return;
+    if (entry.marker) this._layer.removeLayer(entry.marker);
+    if (entry.halo) this._layer.removeLayer(entry.halo);
+    this._strikes.delete(id);
+  }
+
+  _restyleAll(now) {
+    for (const [id, entry] of this._strikes) {
+      const ageSec = Math.max(0, (now - entry.ts) / 1000);
+      if (ageSec >= this._fadeSec) { this._removeStrike(id); continue; }
+      const color = colorForAge(ageSec, this._fadeSec);
+      const opacity = opacityForAge(ageSec, this._fadeSec);
+      if (entry.marker) entry.marker.setStyle({ fillColor: color, fillOpacity: opacity });
+      if (entry.halo && ageSec >= LIGHTNING_FRESH_SEC) {
+        this._layer.removeLayer(entry.halo);
+        entry.halo = null;
+      }
+    }
+  }
+
+  _refreshAges() {
+    this._restyleAll(Date.now());
+  }
+
+  _ensurePulseLoop() {
+    if (this._rafId != null || typeof requestAnimationFrame !== 'function') return;
+    const step = () => {
+      const now = Date.now();
+      let active = false;
+      for (const entry of this._strikes.values()) {
+        if (entry.pulseStart == null) continue;
+        const t = (now - entry.pulseStart) / LIGHTNING_PULSE_MS;
+        if (t >= 1) {
+          entry.pulseStart = null;
+          if (entry.marker) entry.marker.setRadius(this._dotSize);
+          if (entry.halo) entry.halo.setRadius(this._dotSize * LIGHTNING_HALO_RATIO);
+          continue;
+        }
+        active = true;
+        const scale = pulseScale(t); // 2x -> 1x ease-out
+        if (entry.marker) entry.marker.setRadius(this._dotSize * scale);
+        if (entry.halo) entry.halo.setRadius(this._dotSize * LIGHTNING_HALO_RATIO * scale);
+      }
+      this._rafId = active ? requestAnimationFrame(step) : null;
+    };
+    this._rafId = requestAnimationFrame(step);
+  }
+
+  destroy() {
+    if (this._ageTimer) { clearInterval(this._ageTimer); this._ageTimer = null; }
+    if (this._rafId != null && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(this._rafId); }
+    this._rafId = null;
+    if (this._layer && this._map?.hasLayer(this._layer)) this._map.removeLayer(this._layer);
+    this._layer = null;
+    this._renderer = null;
+    this._strikes.clear();
+  }
+}
+
 class BomRadarCard extends HTMLElement {
   constructor() {
     super();
@@ -1580,6 +1731,7 @@ class BomRadarCard extends HTMLElement {
     this._previousDisplayZoom = null;
     this._initToken = 0;
     this._resolvedBasemapStyle = null;
+    this._lightning = null;
   }
 
   connectedCallback() {
@@ -1615,6 +1767,9 @@ class BomRadarCard extends HTMLElement {
       return;
     }
     this._initIfReady();
+    if (this._lightning) {
+      this._lightning.updateHass(hass);
+    }
   }
 
   setConfig(config) {
@@ -1660,6 +1815,10 @@ class BomRadarCard extends HTMLElement {
       allow_overzoom: allowOverzoom,
       max_display_zoom: maxDisplayZoom,
       card_mod: config.card_mod,
+      show_lightning: config.show_lightning !== false,
+      lightning_fade_minutes: clampNumber(config.lightning_fade_minutes, 30, 1, 120),
+      lightning_pulse: config.lightning_pulse !== false,
+      lightning_dot_size: clampNumber(config.lightning_dot_size, 5, 2, 12),
     };
     if (this._initialized || this._map) {
       this._restart();
@@ -1859,6 +2018,19 @@ class BomRadarCard extends HTMLElement {
         iconAnchor: [12, 12],
       });
       L.marker([mLat, mLon], { icon, interactive: false }).addTo(this._map);
+    }
+
+    // Lightning overlay (optional; requires the Blitzortung integration)
+    if (this._config.show_lightning && isBlitzortungLoaded(this._hass)) {
+      this._lightning = new LightningOverlay(L, this._map, {
+        fadeMinutes: this._config.lightning_fade_minutes,
+        pulse: this._config.lightning_pulse,
+        dotSize: this._config.lightning_dot_size,
+      });
+      this._lightning.start(this._hass);
+      if (this._config.show_attribution && this._map.attributionControl) {
+        this._map.attributionControl.addAttribution(LIGHTNING_ATTRIBUTION);
+      }
     }
 
     this._setupControls();
@@ -2285,6 +2457,10 @@ class BomRadarCard extends HTMLElement {
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
+    }
+    if (this._lightning) {
+      this._lightning.destroy();
+      this._lightning = null;
     }
     if (this._map) {
       this._map.remove();
