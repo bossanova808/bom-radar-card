@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- Optional live Blitzortung lightning-strike overlay. When the
+  [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung)
+  is installed, recency-coloured strike dots are drawn on the radar (on by default).
+  New options: `show_lightning`, `lightning_fade_minutes`, `lightning_pulse`,
+  `lightning_dot_size`.
+
 ## v1.9.0 - 2026-06-25
 
 ### Added
