@@ -8,7 +8,7 @@
 
 import { collectLightningStrikes, colorForAge, isBlitzortungLoaded, opacityForAge, pulseScale } from './lightning.js';
 
-const CARD_VERSION = '1.9.0';
+const CARD_VERSION = '1.10.0';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 

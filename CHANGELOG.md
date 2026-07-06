@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.10.0 - 2026-07-06
 
 ### Added
 - Optional live Blitzortung lightning-strike overlay. When the
@@ -8,6 +8,13 @@
   is installed, recency-coloured strike dots are drawn on the radar (on by default).
   New options: `show_lightning`, `lightning_fade_minutes`, `lightning_pulse`,
   `lightning_dot_size`.
+
+### Maintenance
+- Updated the Rollup build tooling and lockfile to clear dev-dependency audit findings.
+
+### Validation
+- Verified the Blitzortung overlay with unit tests, a local Chromium smoke test,
+  and the existing browser/all-layer regression harnesses.
 
 ## v1.9.0 - 2026-06-25
 

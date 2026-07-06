@@ -11,7 +11,7 @@ This card exists as a modern replacement for older Home Assistant BOM radar card
 [![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
 [![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
 
-Current release: **v1.9.0**
+Current release: **v1.10.0**
 
 > [!IMPORTANT]
 > If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
@@ -25,7 +25,7 @@ Current release: **v1.9.0**
 
 ## Latest Release
 
-`v1.9.0` adds BOM-native Snow and Frost significant-weather forecast overlays, verified against the current BOM WMTS capabilities and live browser rendering.
+`v1.10.0` adds an optional live Blitzortung lightning overlay, with recency-coloured strike dots, fade controls, and visual editor support when the Blitzortung integration is installed.
 
 The default `basemap_style: auto` still follows Home Assistant's `sun.sun` state for day/night switching. Users who prefer the previous CARTO look can keep it with `basemap_provider: carto`. See [CHANGELOG.md](CHANGELOG.md) for full release notes.
 
@@ -41,6 +41,7 @@ If the card saves you time and you want to support ongoing maintenance, you can 
 - **In-card layer switcher** so people can move between available layers without reconfiguring the card
 - **Built-in radar legend** for rain rate and reflectivity layers
 - **Configurable presentation** with toggles for playback, legend, zoom, recenter, layer switcher, marker, attribution, and more
+- **Optional live Blitzortung lightning overlay** with recency colours, fade controls, and no effect unless the Blitzortung integration is installed
 - **Optional BOM reference overlays** for state borders, forecast districts, coastal areas, drainage divisions, railways, and lakes
 - **BOM-native default basemap** with day/night styles, plus optional CARTO, Stadia Maps, and Esri providers
 - **Visual editor support** for normal day-to-day configuration in Home Assistant
@@ -68,7 +69,7 @@ The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as
 
 ### Manual
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.9.0` at the time of writing)
+1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.10.0` at the time of writing)
 2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
 3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
 
