@@ -6,3 +6,7 @@ AGENTS.md
 .codex
 .deepsec/
 
+# Local verification artifacts
+test/harness/
+test/recon/
+test/screenshots/
