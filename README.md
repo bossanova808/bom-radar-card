@@ -116,6 +116,10 @@ That's it — it will use your Home Assistant location as the default center.
 | `square_style` | boolean | `false` | Use square corners for the card chrome and controls |
 | `show_layer_label` | boolean | `false` | Show layer name badge |
 | `show_attribution` | boolean | `true` | Show map attribution |
+| `show_lightning` | boolean | `true` | Overlay live Blitzortung lightning strikes. Shows only when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed |
+| `lightning_fade_minutes` | number | `30` | How long strikes remain visible while fading by age (1–120). Strikes also vanish when the integration expires them |
+| `lightning_pulse` | boolean | `true` | One-shot pulse when a strike first appears. Automatically disabled under reduced-motion settings |
+| `lightning_dot_size` | number | `5` | Strike dot radius in pixels (2–12). YAML only |
 | `dark_basemap` | boolean | `true` | Legacy fallback for dark/light defaults. Still supported |
 
 ### Sizing In Home Assistant
@@ -123,6 +127,15 @@ That's it — it will use your Home Assistant location as the default center.
 `map_height` is the card's rendered height. The playback bar, layer button, recenter button, legend, marker, and optional layer label are map overlays, so they do not add extra layout height.
 
 Home Assistant uses `getCardSize()` for masonry dashboards and `getGridOptions()` for sections dashboards. Both layout hints are calculated from the same `map_height` value, with the sections view rounded to Home Assistant's 56 px row grid plus 8 px gaps. A small amount of rounding space can still appear in sections view because the Home Assistant grid is discrete, but enabling or disabling playback controls should not create a separate block of whitespace under the card.
+
+### Lightning Overlay
+
+When the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung)
+is installed, the card overlays its live lightning strikes on the radar, on by default.
+Strikes are drawn as recency-coloured dots — white/yellow when fresh, fading through
+amber to dark red — and disappear as the integration expires them. The feature is
+completely inert when the integration is not installed. Turn it off with
+`show_lightning: false`. Lightning data &copy; [Blitzortung.org](https://www.blitzortung.org).
 
 ### Compatibility Notes
 
