@@ -1,5 +1,29 @@
 # Changelog
 
+## v1.10.1 - 2026-08-02
+
+### Fixed
+
+- Preserved card-mod's injected host styles when Home Assistant reconnects a
+  cached Lovelace view, preventing width constraints from disappearing and the
+  radar from rendering wider after switching dashboard tabs.
+- Kept Leaflet's cached map size stable while a container is hidden, and
+  re-measured its padding-box size when it becomes visible or its responsive
+  layout changes. This prevents stale framing during other visibility paths.
+
+### Documentation
+
+- Reworked the README into a shorter, grouped reference with clearer setup,
+  configuration, recipes, layer, sizing, and troubleshooting guidance.
+
+### Validation
+
+- Passed the unit, coverage, build, package, dependency-audit, syntax, and
+  committed-bundle parity checks.
+- Passed the issue 17 browser lifecycle matrix on desktop, mobile, fractional
+  device-pixel-ratio, and ResizeObserver-only configurations. The v1.10.0
+  positive control reproduced the original failures while v1.10.1 did not.
+
 ## v1.10.0 - 2026-07-06
 
 ### Added

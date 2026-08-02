@@ -7,8 +7,10 @@
  */
 
 import { collectLightningStrikes, colorForAge, isBlitzortungLoaded, opacityForAge, pulseScale } from './lightning.js';
+import { createResizeGuardedMap, invalidateMapSizeIfVisible } from './map-resize.js';
+import { replaceShadowContentPreservingCardMod } from './shadow-content.js';
 
-const CARD_VERSION = '1.10.0';
+const CARD_VERSION = '1.10.1';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 
@@ -1731,6 +1733,7 @@ class BomRadarCard extends HTMLElement {
     this._initialized = false;
     this._updateTimer = null;
     this._resizeObserver = null;
+    this._visibilityObserver = null;
     this._layerSwitcher = null;
     this._bomReferenceLayers = [];
     this._labelLayer = null;
@@ -1899,7 +1902,7 @@ class BomRadarCard extends HTMLElement {
     const initToken = ++this._initToken;
     this._initialized = true;
 
-    this.shadowRoot.innerHTML = `
+    replaceShadowContentPreservingCardMod(this.shadowRoot, `
       <style>${LEAFLET_CSS}${CARD_CSS}</style>
       <ha-card style="--bom-card-radius:${this._config.square_style ? '0px' : 'var(--ha-card-border-radius, 12px)'}; --bom-chrome-opacity:${this._config.chrome_opacity}; --bom-ui-accent-color:${this._config.accent_color || DEFAULT_UI_ACCENT_COLOR}; --bom-map-accent-color:${this._config.location_color || `var(--accent-color, ${DEFAULT_ACCENT_COLOR})`}">
         <div class="card-content${this._config.square_style ? ' is-square' : ''}">
@@ -1916,7 +1919,7 @@ class BomRadarCard extends HTMLElement {
           </div>` : ''}
         </div>
       </ha-card>
-    `;
+    `);
 
     try {
       this._renderTopOverlays();
@@ -1965,7 +1968,7 @@ class BomRadarCard extends HTMLElement {
 
     container.style.background = basemapConfig.background;
 
-    this._map = L.map(container, {
+    this._map = createResizeGuardedMap(L, container, {
       center: [lat, lon],
       zoom: this._config.zoom_level,
       zoomControl: false,
@@ -2081,12 +2084,29 @@ class BomRadarCard extends HTMLElement {
       this._scheduleMapResize();
       this._fitLayerSwitcherPanel();
     });
-    this._resizeObserver.observe(container);
+    // Leaflet measures clientWidth/clientHeight (the padding box), so observe
+    // the border box rather than missing padding-only responsive changes.
+    this._resizeObserver.observe(container, { box: 'border-box' });
+    if (typeof IntersectionObserver === 'function') {
+      this._visibilityObserver = new IntersectionObserver((entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        this._scheduleMapResize();
+        this._fitLayerSwitcherPanel();
+      });
+      this._visibilityObserver.observe(container);
+    }
     this._scheduleMapResize();
   }
 
   _scheduleMapResize() {
-    const resize = () => this._map?.invalidateSize();
+    const map = this._map;
+    const container = this.shadowRoot.getElementById('map');
+    if (!map || !container) return;
+
+    const resize = () => {
+      if (this._map !== map || this.shadowRoot.getElementById('map') !== container) return;
+      invalidateMapSizeIfVisible(map, container);
+    };
     resize();
     if (typeof requestAnimationFrame === 'function') {
       requestAnimationFrame(resize);
@@ -2465,6 +2485,10 @@ class BomRadarCard extends HTMLElement {
     if (this._resizeObserver) {
       this._resizeObserver.disconnect();
       this._resizeObserver = null;
+    }
+    if (this._visibilityObserver) {
+      this._visibilityObserver.disconnect();
+      this._visibilityObserver = null;
     }
     if (this._lightning) {
       this._lightning.destroy();
