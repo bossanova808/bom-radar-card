@@ -1,169 +1,166 @@
 # BOM Radar Card
 
-Home Assistant custom card for **native Australian Bureau of Meteorology radar and weather map layers**, built on BOM's current WMTS platform and using the same public map stack that powers [bom.gov.au](https://www.bom.gov.au).
+<div align="center">
 
-This card exists as a modern replacement for older Home Assistant BOM radar cards that depended on the discontinued `api.weather.bom.gov.au` stack.
+Native Australian Bureau of Meteorology radar and weather layers for Home Assistant.
 
-[![hacs_badge](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
-[![Open your Home Assistant instance and open this repository in HACS.](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=AshtonAU&repository=bom-radar-card&category=plugin)
-[![GitHub Release](https://img.shields.io/github/v/release/AshtonAU/bom-radar-card)](https://github.com/AshtonAU/bom-radar-card/releases)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-ea4aaa?logo=githubsponsors&logoColor=white)](https://github.com/sponsors/AshtonAU)
-[![Buy Me a Coffee](https://img.shields.io/badge/Support-Buy%20Me%20a%20Coffee-FFDD00?logo=buymeacoffee&logoColor=000000)](https://buymeacoffee.com/ashtonau)
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://github.com/hacs/integration)
+[![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=AshtonAU&repository=bom-radar-card&category=plugin)
+[![GitHub Release](https://img.shields.io/github/v/release/AshtonAU/bom-radar-card)](https://github.com/AshtonAU/bom-radar-card/releases/latest)
+[![CI](https://github.com/AshtonAU/bom-radar-card/actions/workflows/ci.yml/badge.svg)](https://github.com/AshtonAU/bom-radar-card/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Current release: **v1.10.0**
+**Current release: v1.10.1**
 
-> [!IMPORTANT]
-> If you previously installed another BOM radar card, remove its HACS entry and dashboard resource before adding this one. Home Assistant can keep multiple similarly named Lovelace resources loaded at the same time, which can cause broken or unpredictable behaviour. After switching cards, do a hard refresh / clear browser cache so the new resource is actually loaded.
+</div>
 
-## Feedback
+BOM Radar Card is a modern replacement for older Home Assistant radar cards that depended on the discontinued `api.weather.bom.gov.au` stack. It uses BOM's current public WMTS and MapServer services, with an interactive Leaflet map, animation, forecast layers, optional lightning, and a visual editor.
 
-- Use [GitHub Discussions](https://github.com/AshtonAU/bom-radar-card/discussions) for general feedback, setup questions, ideas, and screenshots.
-- Use [GitHub Issues](https://github.com/AshtonAU/bom-radar-card/issues) for reproducible bugs and concrete feature requests.
-- See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution/reporting guidance.
-- See [SECURITY.md](SECURITY.md) before posting anything sensitive publicly.
+> [!NOTE]
+> **v1.10.1 fixes radar sizing after switching dashboard tabs.** The card now preserves card-mod host styles when Home Assistant reconnects a cached view and prevents Leaflet from caching a hidden or zero-sized map. See the [changelog](CHANGELOG.md) for details.
 
-## Latest Release
+## At a glance
 
-`v1.10.0` adds an optional live Blitzortung lightning overlay, with recency-coloured strike dots, fade controls, and visual editor support when the Blitzortung integration is installed.
+- Native BOM weather tiles from `api.bom.gov.au`
+- 34 observed and forecast layers covering rain, wind, waves, temperature, humidity, UV, and significant weather
+- Pan, zoom, playback, timeline scrubbing, recentering, and five-minute refreshes
+- Built-in layer switcher and rain/reflectivity legend
+- BOM-native automatic day/night basemap by default
+- Optional BOM reference overlays, CARTO, Stadia Maps, and Esri basemaps
+- Optional live lightning from the Home Assistant Blitzortung integration
+- Visual editor plus full YAML configuration
+- No API key required for BOM data or the BOM and CARTO basemaps
 
-The default `basemap_style: auto` still follows Home Assistant's `sun.sun` state for day/night switching. Users who prefer the previous CARTO look can keep it with `basemap_provider: carto`. See [CHANGELOG.md](CHANGELOG.md) for full release notes.
+## Contents
 
-## Support The Project
-
-If the card saves you time and you want to support ongoing maintenance, you can use [GitHub Sponsors](https://github.com/sponsors/AshtonAU) or [Buy Me a Coffee](https://buymeacoffee.com/ashtonau).
-
-## Highlights
-
-- **Native BOM WMTS tiles** from `api.bom.gov.au`, with no API key required
-- **Interactive map and animation** with zoom, pan, play/pause, scrubbing, and automatic refresh
-- **Broad BOM layer support** including observed rain, forecast rain, wind, waves, temperature, humidity, UV, thunderstorms, snow, fog, and frost
-- **In-card layer switcher** so people can move between available layers without reconfiguring the card
-- **Built-in radar legend** for rain rate and reflectivity layers
-- **Configurable presentation** with toggles for playback, legend, zoom, recenter, layer switcher, marker, attribution, and more
-- **Optional live Blitzortung lightning overlay** with recency colours, fade controls, and no effect unless the Blitzortung integration is installed
-- **Optional BOM reference overlays** for state borders, forecast districts, coastal areas, drainage divisions, railways, and lakes
-- **BOM-native default basemap** with day/night styles, plus optional CARTO, Stadia Maps, and Esri providers
-- **Visual editor support** for normal day-to-day configuration in Home Assistant
-
-## How It Works
-
-The card uses BOM's WMTS time-series tile service and loads 256x256 PNG tiles as map overlays. In Home Assistant browser dashboards, BOM's capabilities XML endpoint currently rejects requests that include a browser `Origin` header, so the card uses per-layer generated timestamps for normal operation. In CORS-safe contexts, the published WMTS time dimension parser is still available and rejects stale or stalled capability data before falling back. The basemap is rendered underneath the weather overlay; providers with separate label tiles keep suburb and city names above the overlay where available.
-
-**Data flow:**
-1. Use generated current timestamps in normal Home Assistant browser dashboards
-2. Use fresh published WMTS capability timestamps only when the capabilities endpoint is reachable from a CORS-safe context
-3. Load PNG tiles for each selected timestamp at the current map view
-4. Animate through frames using the built-in playback controls
-5. Auto-refresh periodically so the card stays aligned with BOM updates
+- [Installation](#installation)
+- [Quick start](#quick-start)
+- [Configuration](#configuration)
+- [Common recipes](#common-recipes)
+- [Available BOM layers](#available-bom-layers)
+- [Basemap providers](#basemap-providers)
+- [Layout and sizing](#layout-and-sizing)
+- [How it works](#how-it-works)
+- [Troubleshooting](#troubleshooting)
+- [Support and contributing](#support-and-contributing)
 
 ## Installation
 
-### HACS (Recommended)
+### HACS
 
-1. Open HACS in Home Assistant
-2. Open the three dots menu and choose **Custom repositories**
-3. Add `https://github.com/AshtonAU/bom-radar-card` with category **Dashboard**
-4. Search for `BOM Radar Card` and install it
-5. Hard refresh your browser after installation
+Use the **Open in HACS** button above, or add the repository manually:
 
-### Manual
+1. Open **HACS** in Home Assistant.
+2. Open the three-dot menu and choose **Custom repositories**.
+3. Add `https://github.com/AshtonAU/bom-radar-card` as a **Dashboard** repository.
+4. Find **BOM Radar Card** and select **Download**.
+5. Refresh the Home Assistant page. Use a hard refresh if the old card version remains cached.
 
-1. Download `bom-radar-card.js` from the [latest release](https://github.com/AshtonAU/bom-radar-card/releases) (`v1.10.0` at the time of writing)
-2. Copy to `/config/www/bom-radar-card/bom-radar-card.js`
-3. Add resource: **Settings → Dashboards → Resources → Add** `/local/bom-radar-card/bom-radar-card.js` (JavaScript Module)
+### Manual installation
 
-## Configuration
+1. Download [bom-radar-card.js](https://github.com/AshtonAU/bom-radar-card/releases/latest/download/bom-radar-card.js) from the latest release.
+2. Copy it to `/config/www/bom-radar-card/bom-radar-card.js`.
+3. Open **Settings → Dashboards → Resources → Add resource**.
+4. Add `/local/bom-radar-card/bom-radar-card.js` as a **JavaScript module**.
+5. Refresh the Home Assistant page.
 
-Add the card to your dashboard:
+> [!IMPORTANT]
+> If you are replacing another BOM radar card, remove its HACS entry and dashboard resource first. Home Assistant can load similarly named Lovelace resources at the same time, which may leave the wrong custom element registered. Hard-refresh the browser after changing resources.
+
+## Quick start
+
+Add the card to a dashboard using the visual editor, or paste this YAML:
 
 ```yaml
 type: custom:bom-radar-card
 ```
 
-That's it — it will use your Home Assistant location as the default center.
+The minimal YAML card uses your Home Assistant location, BOM's automatic day/night basemap, rain rate, up to nine animation frames, and a 300 px map. Cards created through the visual editor start on radar reflectivity.
 
-### Full Options
-
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `layer` | string | `reflectivity` | BOM layer (see table below) |
-| `center_latitude` | number | HA config | Map center latitude |
-| `center_longitude` | number | HA config | Map center longitude |
-| `zoom_level` | number | `7` | Map zoom level. Default range is 3–8, or 3–10 when `allow_overzoom` is enabled |
-| `map_height` | number | `300` | Rendered map/card height in pixels. YAML values are capped at 4096 px to protect dashboard clients |
-| `allow_overzoom` | boolean | `false` | Experimental closer-view mode. Allows display zoom up to 10 by scaling BOM's native z8 radar tiles |
-| `basemap_provider` | string | `bom` | Basemap provider: `bom`, `carto`, `stadia`, or `esri` |
-| `basemap_style` | string | provider default | Basemap style for the selected provider. Set to `auto` for day/night switching on providers with light/dark pairs |
-| `basemap_api_key` | string | none | Optional provider API key. Not used for BOM or CARTO |
-| `show_bom_boundaries` | boolean | `false` | Backward-compatible shortcut for `bom_reference_layers: [state_borders]` |
-| `bom_reference_layers` | list | none | Optional BOM reference overlays: `state_borders`, `coastal_areas`, `forecast_districts`, `drainage_divisions`, `railways`, `lakes` |
-| `radar_opacity` | number | `0.7` | Weather overlay opacity (0.1–1.0) |
-| `chrome_opacity` | number | `1.0` | Opacity of the card chrome: controls, playback bar, layer badge, and panels |
-| `accent_color` | string | neutral UI default | Optional custom UI accent color for playback/progress/focus highlights |
-| `location_color` | string | HA accent | Optional custom GPS/home marker color |
-| `frame_count` | number | `9` | Number of animation frames. Values are clamped to 1–9 |
-| `frame_delay` | number | `500` | Animation speed in milliseconds |
-| `restart_delay` | number | `1500` | Pause at end of loop in milliseconds |
-| `enabled_layers` | list | all layers | Restrict which BOM layers appear in the in-card layer switcher |
-| `show_marker` | boolean | `true` | Show home location marker |
-| `marker_latitude` | number | center | Marker latitude |
-| `marker_longitude` | number | center | Marker longitude |
-| `show_zoom` | boolean | `true` | Show zoom controls |
-| `show_recenter` | boolean | `true` | Show recenter button for home location |
-| `show_layer_switcher` | boolean | `true` | Show in-card layer switcher button |
-| `show_playback` | boolean | `true` | Show timeline controls overlaid on the map |
-| `show_legend` | boolean | `true` | Show BOM-style legend for rain rate and reflectivity layers |
-| `square_style` | boolean | `false` | Use square corners for the card chrome and controls |
-| `show_layer_label` | boolean | `false` | Show layer name badge |
-| `show_attribution` | boolean | `true` | Show map attribution |
-| `show_lightning` | boolean | `true` | Overlay live Blitzortung lightning strikes. Shows only when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed |
-| `lightning_fade_minutes` | number | `30` | How long strikes remain visible while fading by age (1–120). Strikes also vanish when the integration expires them |
-| `lightning_pulse` | boolean | `true` | One-shot pulse when a strike first appears. Automatically disabled under reduced-motion settings |
-| `lightning_dot_size` | number | `5` | Strike dot radius in pixels (2–12). YAML only |
-| `dark_basemap` | boolean | `true` | Legacy fallback for dark/light defaults. Still supported |
-
-### Sizing In Home Assistant
-
-`map_height` is the card's rendered height. The playback bar, layer button, recenter button, legend, marker, and optional layer label are map overlays, so they do not add extra layout height.
-
-Home Assistant uses `getCardSize()` for masonry dashboards and `getGridOptions()` for sections dashboards. Both layout hints are calculated from the same `map_height` value, with the sections view rounded to Home Assistant's 56 px row grid plus 8 px gaps. A small amount of rounding space can still appear in sections view because the Home Assistant grid is discrete, but enabling or disabling playback controls should not create a separate block of whitespace under the card.
-
-### Lightning Overlay
-
-When the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung)
-is installed, the card overlays its live lightning strikes on the radar, on by default.
-Strikes are drawn as recency-coloured dots — white/yellow when fresh, fading through
-amber to dark red — and disappear as the integration expires them. The feature is
-completely inert when the integration is not installed. Turn it off with
-`show_lightning: false`. Lightning data &copy; [Blitzortung.org](https://www.blitzortung.org).
-
-### Compatibility Notes
-
-The card ignores unknown YAML keys so existing dashboards keep loading when users migrate from another radar card. Use `radar_opacity` for the BOM weather overlay; older keys from other cards such as `overlay_transparency` are not used. `show_scale` is also not a supported option in this card.
-
-### Example
+A practical customized example:
 
 ```yaml
 type: custom:bom-radar-card
+layer: rain_rate
 center_latitude: -33.87
 center_longitude: 151.21
 zoom_level: 7
-layer: reflectivity
 map_height: 350
 basemap_provider: bom
 basemap_style: auto
+frame_count: 9
 frame_delay: 400
 radar_opacity: 0.7
-chrome_opacity: 0.9
 show_marker: true
 show_layer_switcher: true
-square_style: false
+show_playback: true
+show_legend: true
 ```
 
-### Auto Day/Night Basemap
+## Configuration
 
-Set `basemap_style: auto` to have the card use a light default basemap while the sun is above the horizon and a dark default basemap after sunset:
+Most options are available in Home Assistant's visual editor. YAML-only options are marked below.
+
+### Map and data
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `layer` | string | `rain_rate` | Initial BOM layer for minimal YAML. The visual editor starts new cards on `reflectivity`. See [Available BOM layers](#available-bom-layers). |
+| `enabled_layers` | list | all layers | Limit the available layers. If `layer` is omitted or excluded, the first enabled layer becomes active. |
+| `center_latitude` | number | HA latitude | Map center latitude. |
+| `center_longitude` | number | HA longitude | Map center longitude. |
+| `zoom_level` | number | `7` | Display zoom from 3–8, or 3–10 with `allow_overzoom`. |
+| `map_height` | number | `300` | Map height in pixels. YAML values are capped at 4096 px. |
+| `allow_overzoom` | boolean | `false` | Scale BOM's native z8 radar tiles up to display zoom 10. |
+| `basemap_provider` | string | `bom` | `bom`, `carto`, `stadia`, or `esri`. |
+| `basemap_style` | string | `auto` | Provider style, including automatic day/night switching where supported. |
+| `basemap_api_key` | string | none | Optional Stadia Maps or Esri key. Not used by BOM or CARTO. |
+| `bom_reference_layers` | list | none | Add `state_borders`, `coastal_areas`, `forecast_districts`, `drainage_divisions`, `railways`, or `lakes`. |
+| `show_bom_boundaries` | boolean | `false` | Legacy shortcut that adds `state_borders`. |
+
+### Animation and appearance
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `frame_count` | number | `9` | Maximum animation frames, clamped to 1–9. Some daily products provide fewer. |
+| `frame_delay` | number | `500` | Delay between frames in milliseconds; minimum 100 ms. |
+| `restart_delay` | number | `1500` | Pause on the final frame in milliseconds; minimum 500 ms. |
+| `radar_opacity` | number | `0.7` | Weather overlay opacity from 0.1–1.0. |
+| `chrome_opacity` | number | `1.0` | Opacity of controls, badges, and panels from 0.2–1.0. |
+| `accent_color` | string | neutral | Optional `#RGB` or `#RRGGBB` color for UI highlights. |
+| `location_color` | string | HA accent | Optional `#RGB` or `#RRGGBB` color for the location marker. |
+| `show_marker` | boolean | `true` | Show the home marker. |
+| `marker_latitude` | number | HA latitude | Override the marker latitude without changing the map center. Falls back to the configured center, then Sydney, when HA has no location. |
+| `marker_longitude` | number | HA longitude | Override the marker longitude without changing the map center. Falls back to the configured center, then Sydney, when HA has no location. |
+| `show_zoom` | boolean | `true` | Show Leaflet zoom controls. |
+| `show_recenter` | boolean | `true` | Show the button that recenters on the marker location. |
+| `show_layer_switcher` | boolean | `true` | Show the in-card layer switcher. |
+| `show_playback` | boolean | `true` | Show playback and timeline controls. |
+| `show_legend` | boolean | `true` | Show the rain-rate/reflectivity legend when applicable. |
+| `show_layer_label` | boolean | `false` | Show the active layer name. |
+| `show_attribution` | boolean | `true` | Show map and data attribution. |
+| `square_style` | boolean | `false` | Use square corners for the card and controls. |
+| `dark_basemap` | boolean | `true` | Legacy light/dark fallback used when a fixed style is not configured. |
+
+### Lightning
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `show_lightning` | boolean | `true` | Show strikes when the [Blitzortung integration](https://github.com/mrk-its/homeassistant-blitzortung) is installed. |
+| `lightning_fade_minutes` | number | `30` | Fade window from 1–120 minutes. |
+| `lightning_pulse` | boolean | `true` | Pulse newly seen strikes; disabled when reduced motion is preferred. |
+| `lightning_dot_size` | number | `5` | Strike radius from 2–12 px. YAML only. |
+
+Lightning is inert when the Blitzortung integration is not installed. Fresh strikes start white/yellow and fade through amber to dark red before disappearing. Lightning data &copy; [Blitzortung.org](https://www.blitzortung.org/).
+
+### Compatibility
+
+Unknown YAML keys are ignored so migrated dashboards continue loading. Use `radar_opacity` for the BOM overlay; keys from other radar cards such as `overlay_transparency` and `show_scale` are not supported.
+
+## Common recipes
+
+<details>
+<summary><strong>Automatic day/night basemap</strong></summary>
 
 ```yaml
 type: custom:bom-radar-card
@@ -171,18 +168,12 @@ basemap_provider: bom
 basemap_style: auto
 ```
 
-Auto mode uses Home Assistant's `sun.sun` state, so the switch follows the sunrise and sunset times for your Home Assistant location. If `sun.sun` is unavailable, the card falls back to the legacy `dark_basemap` default. The default BOM provider uses `basemap_default` during the day and the verified `basemap_dark` MapServer tiles after sunset.
+Automatic mode follows Home Assistant's `sun.sun` state. If that entity is unavailable, `dark_basemap` supplies the fallback.
 
-### BOM Reference Overlays
+</details>
 
-If you want BOM's own map reference tiles drawn above the weather layer, enable the optional boundaries overlay:
-
-```yaml
-type: custom:bom-radar-card
-show_bom_boundaries: true
-```
-
-For more map context, choose one or more verified BOM reference overlays:
+<details>
+<summary><strong>BOM borders and reference overlays</strong></summary>
 
 ```yaml
 type: custom:bom-radar-card
@@ -192,11 +183,12 @@ bom_reference_layers:
   - coastal_areas
 ```
 
-Available reference overlays are `state_borders`, `coastal_areas`, `forecast_districts`, `drainage_divisions`, `railways`, and `lakes`. They use BOM's public MapServer image tiles and are off by default so existing dashboards keep their current appearance.
+These public BOM MapServer layers render above the weather overlay.
 
-### Optional Overzoom
+</details>
 
-If you want a closer local view without waiting for a separate local-radar mode, you can enable experimental overzoom:
+<details>
+<summary><strong>Closer view with optional overzoom</strong></summary>
 
 ```yaml
 type: custom:bom-radar-card
@@ -205,79 +197,12 @@ zoom_level: 10
 allow_overzoom: true
 ```
 
-This does **not** add extra native BOM radar detail. It simply allows the card to scale BOM's native `z8` radar tiles up to a display zoom of `10`, which can be useful for local inspection but may look softer than BOM's dedicated local `64 km / 128 km` radar products.
+Overzoom enlarges BOM's native z8 tiles. It provides a closer view but no additional radar detail, so the result may look softer.
 
-### Basemap Providers
+</details>
 
-- `bom`: default option, BOM-native light/dark map tiles, no API key required
-- `carto`: no API key required
-- `stadia`: optional styles including smoother road/terrain maps and satellite imagery
-- `esri`: optional imagery/topographic styles
-
-To keep the previous CARTO look after upgrading, set `basemap_provider: carto` and choose the fixed `basemap_style` you prefer, such as `dark` or `light` (CARTO Voyager).
-
-`basemap_api_key` is optional in the config, but Stadia Maps and Esri may require a valid key depending on the selected style and the environment the card is hosted from.
-
-BOM and CARTO are the no-key options. The BOM provider uses public BOM map tile services observed and verified against the current BOM map stack, including `basemap_default` and `basemap_dark`. Both Stadia Maps and Esri offer free-tier access, but the exact limits and which styles are included can vary by provider plan.
-
-Important notes:
-
-- `localhost` testing is not the same thing as a normal Home Assistant install on a LAN hostname or IP. A provider that appears keyless in local testing may still require a key for real users.
-- Stadia Maps authentication requirements vary by host setup, and some styles may be plan-dependent.
-- Esri also has an authenticated API-key path for their modern basemap services, even if some legacy tile endpoints appear to work anonymously.
-- If Stadia styles fail with an auth or tile-loading error in Home Assistant, the first thing to try is adding a real key or configuring Stadia domain auth for your HA URL.
-
-### Getting Basemap Provider Keys
-
-`bom` and `carto` do not need a key.
-
-For `stadia` and `esri`, the card uses the single `basemap_api_key` field. Only the currently selected provider uses that key.
-
-#### Stadia Maps
-
-Use this if the Stadia styles error in Home Assistant, or if your card is being served from a LAN IP / hostname / domain instead of `localhost`.
-
-1. Create a free Stadia Maps account.
-2. Open the Stadia client dashboard and select the property/site you want to use.
-3. Under authentication settings, either:
-   - generate an API key, or
-   - configure domain-based authentication for your Home Assistant URL
-4. Paste the API key into `basemap_api_key` if you are using key auth.
-
-Helpful links:
-
-- [Authentication docs](https://docs.stadiamaps.com/authentication/)
-- [Client dashboard](https://client.stadiamaps.com/)
-- [Pricing](https://stadiamaps.com/pricing/)
-
-#### Esri / ArcGIS
-
-Use this if you want the Esri styles to work consistently with an authenticated setup.
-
-1. Create an ArcGIS Location Platform or ArcGIS Online account.
-2. Create API key credentials using Esri's current API key flow.
-3. Generate an API key with basemap access.
-4. Paste that API key into `basemap_api_key`.
-
-Helpful links:
-
-- [API keys and security](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/)
-- [Create an API key tutorial](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/tutorials/create-an-api-key/online/)
-- [Basemap Styles service](https://developers.arcgis.com/rest/basemap-styles/)
-
-Note: Esri legacy API keys are being retired, so use the current API key credentials flow rather than older legacy-key docs.
-
-### UI Polish And Accent Controls
-
-- `chrome_opacity` lets you soften or strengthen the card chrome without affecting the weather overlay itself
-- `accent_color` controls the UI highlight color for playback/progress/focus states
-- `location_color` controls the GPS/home marker independently from the rest of the UI
-
-By default, the card uses a neutral light UI accent and keeps the location marker tied to your Home Assistant accent color.
-
-### Limiting The Layer Switcher
-
-If you want the in-card layer switcher to show only a smaller curated set, use `enabled_layers`:
+<details>
+<summary><strong>Limit the in-card layer switcher</strong></summary>
 
 ```yaml
 type: custom:bom-radar-card
@@ -290,38 +215,64 @@ enabled_layers:
   - air_temperature
 ```
 
-## Available BOM Layers
+</details>
+
+<details>
+<summary><strong>Center a maximum-width card with card-mod</strong></summary>
+
+Requires the separate [card-mod](https://github.com/thomasloven/lovelace-card-mod) integration.
+
+```yaml
+type: custom:bom-radar-card
+map_height: 600
+card_mod:
+  style: |
+    :host {
+      display: block;
+      max-width: 750px;
+      margin: 0 auto;
+    }
+```
+
+</details>
+
+## Available BOM layers
+
+The visual editor and in-card switcher use these layer IDs. Observed layers initially show the latest observation, then playback loops from oldest to newest. Forecast layers start at the earliest available current or future timestamp.
+
+<details>
+<summary><strong>Show all 34 layer IDs</strong></summary>
 
 | Layer ID | Category | Description |
-|----------|----------|-------------|
+| --- | --- | --- |
 | `rain_rate` | Rain / observed | Rain rate in mm/h |
-| `accumulation_1hr` | Rain / observed | Estimated 1-hour rainfall accumulation |
+| `accumulation_1hr` | Rain / observed | Estimated one-hour rainfall accumulation |
 | `accumulation_24hr` | Rain / observed | Accumulated 24-hour rainfall total |
-| `reflectivity` | Rain / observed | Raw radar reflectivity in dBZ (default) |
-| `forecast_rain_50pct_3hr` | Rain / forecast | 50% chance forecast rain amount, 3-hourly |
+| `reflectivity` | Rain / observed | Raw radar reflectivity in dBZ |
+| `forecast_rain_50pct_3hr` | Rain / forecast | 50% chance forecast rain amount, three-hourly |
 | `forecast_rain_50pct_daily` | Rain / forecast | 50% chance forecast rain amount, daily |
-| `forecast_rain_25pct_3hr` | Rain / forecast | 25% chance forecast rain amount, 3-hourly |
+| `forecast_rain_25pct_3hr` | Rain / forecast | 25% chance forecast rain amount, three-hourly |
 | `forecast_rain_25pct_daily` | Rain / forecast | 25% chance forecast rain amount, daily |
-| `forecast_rain_10pct_3hr` | Rain / forecast | 10% chance forecast rain amount, 3-hourly |
+| `forecast_rain_10pct_3hr` | Rain / forecast | 10% chance forecast rain amount, three-hourly |
 | `forecast_rain_10pct_daily` | Rain / forecast | 10% chance forecast rain amount, daily |
-| `forecast_rain_chance_3hr` | Rain / forecast | Chance of at least 0.2 mm, 3-hourly |
+| `forecast_rain_chance_3hr` | Rain / forecast | Chance of at least 0.2 mm, three-hourly |
 | `forecast_rain_chance_daily` | Rain / forecast | Chance of at least 0.2 mm, daily |
 | `wind_speed_kmh` | Wind | Wind speed in km/h |
 | `wind_speed_kt` | Wind | Wind speed in knots |
 | `wind_direction` | Wind | Wind direction |
 | `wave_total_height` | Waves | Total wave height |
-| `swell_1_height` | Waves | Swell 1 height |
-| `swell_1_direction` | Waves | Swell 1 direction |
-| `swell_2_height` | Waves | Swell 2 height |
-| `swell_2_direction` | Waves | Swell 2 direction |
-| `wind_wave_height` | Waves | Wind wave height |
+| `swell_1_height` | Waves | Primary swell height |
+| `swell_1_direction` | Waves | Primary swell direction |
+| `swell_2_height` | Waves | Secondary swell height |
+| `swell_2_direction` | Waves | Secondary swell direction |
+| `wind_wave_height` | Waves | Wind-wave height |
 | `air_temperature` | Temperature | Air temperature |
-| `feels_like` | Temperature | Feels like temperature |
+| `feels_like` | Temperature | Apparent temperature |
 | `temperature_max_daily` | Temperature | Daytime maximum temperature |
 | `temperature_min_daily` | Temperature | Overnight minimum temperature |
 | `heatwave_severity` | Temperature | Heatwave severity |
 | `relative_humidity` | Humidity & UV | Relative humidity |
-| `dew_point` | Humidity & UV | Dew point temperature |
+| `dew_point` | Humidity & UV | Dew-point temperature |
 | `uv_index` | Humidity & UV | UV Index |
 | `uv_max_daily` | Humidity & UV | Daily maximum UV Index |
 | `thunderstorms` | Significant weather | Thunderstorm overlay |
@@ -329,40 +280,130 @@ enabled_layers:
 | `fog` | Significant weather | Fog overlay |
 | `frost` | Significant weather | Frost overlay |
 
-`show_legend` currently applies to the rain rate and reflectivity layers, where BOM exposes a qualitative rain-intensity legend. Forecast, accumulation, wind, waves, temperature, humidity, UV, and significant-weather layers still render without an inline legend for now.
+</details>
 
-Observed radar layers animate backward through recent past timestamps. Forecast and daily layers start from the earliest available current/forward timestamp and advance through BOM's forecast horizon.
+The built-in qualitative legend applies to `rain_rate` and `reflectivity`. Other layers use BOM's rendered tile colours without an additional inline scale.
 
-All of the card chrome is optional, so you can keep the full interactive layout or strip it back to a much cleaner map by disabling things like the layer switcher, layer badge, zoom controls, recenter button, playback bar, and attribution.
+## Basemap providers
 
-## Why Not RainViewer?
+| Provider | Included styles | API key |
+| --- | --- | --- |
+| `bom` | Default, Dark, Auto | Not required |
+| `carto` | Voyager Light, Dark Matter, Auto | Not required |
+| `stadia` | Alidade Light/Dark, Outdoors, OSM Bright, Terrain, Satellite | May be required |
+| `esri` | World Imagery, World Topographic | May be required |
 
-The popular `weather-radar-card` uses RainViewer, which reprocesses BOM data and adds another layer between Home Assistant and the original source. This card pulls **directly from BOM's own tile service** instead, which means:
+Set `basemap_provider: carto` to retain the card's older CARTO appearance. Provider access terms can change; if a third-party basemap rejects tile requests, configure that provider's authentication rather than changing BOM radar settings.
 
-- **Higher fidelity radar imagery**
-- **Less delay between BOM updates and what you see**
-- **More BOM-native layers**, including reflectivity, observed rainfall, forecast rain, wind, waves, temperature, humidity, UV, and significant-weather overlays
-- **Australian-specific bounds and tile handling** instead of a generic global weather view
+### Getting basemap provider keys
 
-## Technical Details
+`bom` and `carto` do not need a key. Stadia Maps and Esri share the `basemap_api_key` field; only the selected provider receives it.
 
-- **Data source**: BOM WMTS at `api.bom.gov.au`
-- **Tile format**: 256×256 PNG with transparency
-- **Projection**: BOM's Australian-extent WMTS TileMatrixSets based on EPSG:3857
-- **Max zoom**: Level 8 by default, or optional display zoom up to 10 with experimental overzoom enabled
-- **Map library**: Leaflet.js 1.9.4 (loaded from CDN)
-- **Basemap**: BOM native default/dark map tiles by default, plus optional CARTO, Stadia Maps, and Esri providers
-- **Update cycle**: 5 minutes
-- **Bundle size**: ~60KB minified
+<details>
+<summary><strong>Stadia Maps authentication</strong></summary>
 
-## Credits
+1. Create a Stadia Maps account.
+2. Open the client dashboard and select your property.
+3. Generate an API key or configure domain authentication for your Home Assistant URL.
+4. Add the key as `basemap_api_key` when using key authentication.
 
-- Radar data: [Bureau of Meteorology](http://www.bom.gov.au) (Commonwealth of Australia)
-- Basemaps: [Bureau of Meteorology](http://www.bom.gov.au), [CARTO](https://carto.com/), Stadia Maps, and Esri depending on configuration
-- Map library: [Leaflet.js](https://leafletjs.com/)
+- [Authentication documentation](https://docs.stadiamaps.com/authentication/)
+- [Client dashboard](https://client.stadiamaps.com/)
+- [Pricing](https://stadiamaps.com/pricing/)
 
-## License
+</details>
 
-MIT License — see [LICENSE](LICENSE) for details.
+<details>
+<summary><strong>Esri / ArcGIS authentication</strong></summary>
 
-Radar data is provided by the Australian Bureau of Meteorology. Use is subject to BOM's [copyright notice](http://www.bom.gov.au/other/copyright.shtml).
+1. Create an ArcGIS Location Platform or ArcGIS Online account.
+2. Create API-key credentials with basemap access.
+3. Add the generated key as `basemap_api_key`.
+
+- [API key authentication](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/)
+- [Create an API key](https://developers.arcgis.com/documentation/security-and-authentication/api-key-authentication/tutorials/create-an-api-key/online/)
+- [Basemap Styles service](https://developers.arcgis.com/rest/basemap-styles/)
+
+</details>
+
+## Layout and sizing
+
+`map_height` is the complete rendered card height. Playback, layer, recenter, legend, marker, and label controls overlay the map and do not add another layout block.
+
+Home Assistant uses `getCardSize()` for masonry dashboards and `getGridOptions()` for sections dashboards. Both derive from `map_height`. Sections dashboards still round to Home Assistant's discrete row grid, so a small amount of unused grid space can remain.
+
+When a Lovelace view is hidden, detached, resized, or reconnected, the card guards Leaflet's cached dimensions and remeasures the visible container. This includes dashboard tabs, panel views, stacks, responsive columns, and card-mod width constraints.
+
+## How it works
+
+The card renders BOM's 256×256 PNG time-series tiles over the selected basemap:
+
+1. Generate suitable timestamps from the selected layer's known observed or forecast update schedule.
+2. Load one tile layer per frame and animate through them locally.
+3. Refresh the timestamps and layers every five minutes.
+
+Providers with separate label tiles render those labels above the weather overlay. BOM reference overlays are also kept above weather tiles so borders and districts remain readable.
+
+### Technical details
+
+| Item | Value |
+| --- | --- |
+| Weather service | BOM WMTS at `api.bom.gov.au` |
+| Tile format | 256×256 transparent PNG |
+| Projection | Australian-extent WMTS matrix sets based on EPSG:3857 |
+| Native radar zoom | 0–8 |
+| Optional display overzoom | Up to 10 |
+| Map library | Leaflet 1.9.4 |
+| Refresh interval | Five minutes |
+
+## Why BOM directly?
+
+The card requests weather tiles from BOM's own mapping service rather than a third-party weather-data intermediary. That provides:
+
+- BOM's native layer IDs and rendered products
+- Observed and forecast products beyond a standard rain-radar view
+- BOM's Australian tile extents and matrix offsets
+- A direct, inspectable path from the browser to the public BOM tile endpoints
+
+## Troubleshooting
+
+### The card does not appear after installation
+
+- Confirm the resource is loaded as a **JavaScript module**.
+- Hard-refresh the browser or clear the Home Assistant frontend cache.
+- Remove old BOM radar resources that may register a conflicting custom element.
+- Open the browser console and confirm it reports `BOM-RADAR-CARD v1.10.1`.
+
+### The map changes width or framing after switching tabs
+
+Upgrade to v1.10.1 or later and hard-refresh the browser. This release fixes cached-view reconnects, card-mod host-style loss, and hidden-container Leaflet sizing.
+
+### A Stadia Maps or Esri basemap is blank
+
+The BOM weather layer and third-party basemap are separate services. Add a valid `basemap_api_key` or configure the provider's domain authentication. BOM and CARTO remain the no-key alternatives.
+
+### The timeline shows fewer frames than requested
+
+`frame_count` is capped at nine. Some daily layers intentionally expose fewer frames because their useful published or generated horizon is shorter.
+
+### The map is blank outside Australia
+
+BOM's tile matrices cover Australia and nearby waters rather than the full world. Keep the configured center inside the supported map bounds.
+
+## Support and contributing
+
+- [GitHub Discussions](https://github.com/AshtonAU/bom-radar-card/discussions): setup help, ideas, screenshots, and general feedback
+- [GitHub Issues](https://github.com/AshtonAU/bom-radar-card/issues): reproducible bugs and concrete feature requests
+- [CONTRIBUTING.md](CONTRIBUTING.md): development and contribution guidance
+- [SECURITY.md](SECURITY.md): private vulnerability reporting guidance
+
+If the card saves you time and you want to support maintenance, you can use [GitHub Sponsors](https://github.com/sponsors/AshtonAU) or [Buy Me a Coffee](https://buymeacoffee.com/ashtonau).
+
+## Credits and license
+
+- Weather and reference data: [Australian Bureau of Meteorology](http://www.bom.gov.au) (Commonwealth of Australia)
+- Basemaps: BOM, [CARTO](https://carto.com/), [Stadia Maps](https://stadiamaps.com/), or [Esri](https://www.esri.com/), depending on configuration
+- Map library: [Leaflet](https://leafletjs.com/)
+- Lightning data: [Blitzortung.org](https://www.blitzortung.org/), when enabled
+
+Released under the [MIT License](LICENSE). BOM data remains subject to the Bureau of Meteorology's [copyright notice](http://www.bom.gov.au/other/copyright.shtml).
