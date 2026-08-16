@@ -8,6 +8,8 @@ import {
   colorForAge,
   opacityForAge,
   pulseScale,
+  guardLightningRenderer,
+  removeLightningLayers,
 } from '../src/lightning.js';
 
 test('isBlitzortungLoaded', () => {
@@ -86,4 +88,59 @@ test('pulseScale', () => {
   assert.equal(pulseScale(1), 1);
   assert.equal(pulseScale(1.5), 1);
   assert.equal(pulseScale(0.5), 1.25); // 1 + 0.25
+});
+
+test('removeLightningLayers cancels the renderer before removing its paths', () => {
+  const renderer = { kind: 'renderer' };
+  const layerGroup = { kind: 'layer-group' };
+  const activeLayers = new Set([renderer, layerGroup]);
+  const removalOrder = [];
+  let redrawPending = true;
+
+  const map = {
+    hasLayer(layer) {
+      return activeLayers.has(layer);
+    },
+    removeLayer(layer) {
+      removalOrder.push(layer.kind);
+      activeLayers.delete(layer);
+      if (layer === renderer) {
+        redrawPending = false;
+      } else if (activeLayers.has(renderer)) {
+        redrawPending = true;
+      }
+    },
+  };
+
+  removeLightningLayers(map, renderer, layerGroup);
+
+  assert.deepEqual(removalOrder, ['renderer', 'layer-group']);
+  assert.equal(redrawPending, false);
+});
+
+test('guardLightningRenderer ignores an orphaned redraw after teardown', () => {
+  let redrawCalls = 0;
+  const renderer = {
+    _ctx: {},
+    _redrawRequest: 42,
+    _redrawBounds: {},
+    _redraw() {
+      redrawCalls += 1;
+    },
+  };
+
+  guardLightningRenderer(renderer);
+  const queuedRedraw = renderer._redraw.bind(renderer);
+
+  queuedRedraw();
+  assert.equal(redrawCalls, 1);
+
+  delete renderer._ctx;
+  renderer._redrawRequest = 43;
+  renderer._redrawBounds = {};
+  queuedRedraw();
+
+  assert.equal(redrawCalls, 1);
+  assert.equal(renderer._redrawRequest, null);
+  assert.equal(renderer._redrawBounds, null);
 });

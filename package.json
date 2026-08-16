@@ -1,11 +1,19 @@
 {
   "name": "bom-radar-card",
-  "version": "1.10.1",
+  "version": "1.11.0",
+  "private": true,
   "description": "Australian Bureau of Meteorology rain radar card for Home Assistant using native BOM WMTS tiles",
   "main": "dist/bom-radar-card.js",
   "type": "module",
+  "engines": {
+    "node": "24.x",
+    "npm": "11.x"
+  },
+  "packageManager": "npm@11.17.0",
   "scripts": {
     "build": "rollup -c",
+    "check:release": "node scripts/check-release.mjs",
+    "check:upstream": "node scripts/check-bom-upstream.mjs",
     "dev": "rollup -c -w",
     "test": "node --test test/*.test.mjs"
   },
@@ -23,12 +31,12 @@
   ],
   "author": "Ashton Turner",
   "license": "MIT",
-  "devDependencies": {
-    "@rollup/plugin-node-resolve": "^16.0.3",
-    "@rollup/plugin-terser": "^1.0.0",
-    "rollup": "^4.62.2"
-  },
   "dependencies": {
-    "leaflet": "^1.9.4"
+    "leaflet": "1.9.4"
+  },
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "16.0.3",
+    "@rollup/plugin-terser": "^1.0.0",
+    "rollup": "^4.62.4"
   }
 }

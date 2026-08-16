@@ -1,5 +1,48 @@
 # Changelog
 
+## v1.11.0 - 2026-08-16
+
+v1.11.0 is a backward-compatible reliability release based on a fresh review
+of BOM's current mapping services. It adds an optional radar-network coverage
+overlay, improves publication-rollover and Home Assistant lifecycle handling,
+and makes the card self-contained by bundling Leaflet. Existing configuration,
+defaults, weather layers, and frame limits remain unchanged.
+
+### Added
+
+- Added an optional, default-off overlay that shades areas outside BOM's radar
+  network coverage for rain rate and reflectivity, available in YAML and the
+  visual editor without a runtime metadata request.
+
+### Fixed
+
+- Locked Home Assistant sections-grid rows to the fixed height derived from
+  `map_height`, avoiding a resize affordance that could not resize the map.
+- Made visual-editor configuration events bubble across the editor shadow root
+  so Home Assistant wrappers can receive them reliably.
+- Started three-hour forecast timelines at the next current or future cadence
+  instead of briefly requesting an expired first frame during BOM rollovers.
+- Prevented blank edge frames when BOM advances a publication window by
+  validating its first and last timestamps with tiny WMTS tiles and shifting a
+  confirmed rollover without reducing the configured frame count.
+- Added a guarded browser-resize fallback so Leaflet remeasures after a hidden
+  or backgrounded dashboard misses its `ResizeObserver` delivery.
+- Prevented a browser error when Home Assistant disconnects or reconnects a
+  lightning-enabled card immediately after a resize.
+- Retried a failed BOM image tile once before using the transparent fallback,
+  recovering from short-lived upstream edge errors without creating a loop.
+- Kept the current radar visible during refreshes and failed or overlapping
+  layer switches, preventing stale results, blank maps, or a layer label that
+  did not match the displayed data.
+
+### Changed
+
+- Bundled Leaflet 1.9.4 into the card so every instance uses the same
+  module-local map engine without downloading Leaflet from a third-party CDN or
+  overwriting a global owned by Home Assistant or another card.
+- Preserved existing configuration, defaults, and layer frame limits. The new
+  radar-coverage overlay remains off unless explicitly enabled.
+
 ## v1.10.1 - 2026-08-02
 
 ### Fixed

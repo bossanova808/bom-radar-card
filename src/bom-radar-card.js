@@ -6,11 +6,35 @@
  * License: MIT
  */
 
-import { collectLightningStrikes, colorForAge, isBlitzortungLoaded, opacityForAge, pulseScale } from './lightning.js';
-import { createResizeGuardedMap, invalidateMapSizeIfVisible } from './map-resize.js';
-import { replaceShadowContentPreservingCardMod } from './shadow-content.js';
+import * as Leaflet from 'leaflet/dist/leaflet-src.esm.js';
 
-const CARD_VERSION = '1.10.1';
+import { BOM_LAYER_GROUPS, BOM_LAYERS, BOM_TILE_MATRIX_SETS } from './bom-layers.js';
+import {
+  collectLightningStrikes,
+  colorForAge,
+  guardLightningRenderer,
+  isBlitzortungLoaded,
+  opacityForAge,
+  pulseScale,
+  removeLightningLayers,
+} from './lightning.js';
+import { getFixedHeightGridOptions } from './grid-options.js';
+import { loadImageWithRetry } from './image-retry.js';
+import { createResizeGuardedMap, invalidateMapSizeIfVisible } from './map-resize.js';
+import {
+  RADAR_COVERAGE_TILE_OPTIONS,
+  RADAR_COVERAGE_TILE_URL,
+  shouldShowRadarCoverage,
+  supportsRadarCoverageLayer,
+} from './radar-coverage.js';
+import { replaceShadowContentPreservingCardMod } from './shadow-content.js';
+import {
+  createImageAvailabilityProbe,
+  createTimestampAvailabilityResolver,
+} from './timestamp-availability.js';
+import { generateFallbackTimestamps } from './timestamps.js';
+
+const CARD_VERSION = '1.11.0';
 const DEFAULT_ACCENT_COLOR = '#00BCD4';
 const DEFAULT_UI_ACCENT_COLOR = '#F8FAFC';
 
@@ -22,482 +46,11 @@ console.info(
 
 // BOM WMTS Configuration
 const BOM_WMTS_BASE = 'https://api.bom.gov.au/apikey/v1/mapping/timeseries/wmts';
-const BOM_WMTS_CAPABILITIES_URL = `${BOM_WMTS_BASE}?SERVICE=WMTS&REQUEST=GetCapabilities&VERSION=1.0.0`;
-const BOM_WMTS_CAPABILITIES_TIMEOUT_MS = 5000;
-
-// Available public BOM WMTS layers.
-// Keep this registry explicit so each layer can define its own matrix set,
-// fallback timing behavior, and initial frame position.
-const BOM_LAYER_GROUPS = [
-  'Rain / observed',
-  'Rain / forecast',
-  'Wind',
-  'Waves',
-  'Temperature',
-  'Humidity & UV',
-  'Significant weather',
-];
-
-const BOM_LAYERS = {
-  'rain_rate': {
-    id: 'atm_surf_air_precip_rate_1hr_total_mm_h',
-    name: 'Rain Rate',
-    category: 'Rain / observed',
-    unit: 'mm/h',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'rainRadar',
-    timeMode: 'past',
-    fallbackStepMinutes: 5,
-    fallbackLagMinutes: 5,
-    initialFrame: 'latest',
-  },
-  'accumulation_1hr': {
-    id: 'atm_surf_air_precip_accumulation_1hr_total_mm',
-    name: 'Estimated Rain 1hr',
-    category: 'Rain / observed',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'numerical',
-    timeMode: 'past',
-    fallbackStepMinutes: 5,
-    fallbackLagMinutes: 5,
-    initialFrame: 'latest',
-  },
-  'accumulation_24hr': {
-    id: 'atm_surf_air_precip_accumulation_24hr_total_mm',
-    name: 'Accumulated Rain 24hr',
-    category: 'Rain / observed',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'numerical',
-    timeMode: 'past',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 9,
-    fallbackMaxFrames: 7,
-    initialFrame: 'latest',
-  },
-  'reflectivity': {
-    id: 'atm_surf_air_precip_reflectivity_dbz',
-    name: 'Rain Reflectivity',
-    category: 'Rain / observed',
-    unit: 'dBZ',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'rainRadar',
-    timeMode: 'past',
-    fallbackStepMinutes: 5,
-    fallbackLagMinutes: 10,
-    initialFrame: 'latest',
-  },
-  'forecast_rain_50pct_3hr': {
-    id: 'atm_surf_air_precip_exceeding_50percentchance_total_mm_3hourly',
-    name: 'Forecast Rain 50% 3hr',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'forecast_rain_50pct_daily': {
-    id: 'atm_surf_air_precip_exceeding_50percentchance_total_mm_daily',
-    name: 'Forecast Rain 50% Daily',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 15,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'forecast_rain_25pct_3hr': {
-    id: 'atm_surf_air_precip_exceeding_25percentchance_total_mm_3hourly',
-    name: 'Forecast Rain 25% 3hr',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'forecast_rain_25pct_daily': {
-    id: 'atm_surf_air_precip_exceeding_25percentchance_total_mm_daily',
-    name: 'Forecast Rain 25% Daily',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 15,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'forecast_rain_10pct_3hr': {
-    id: 'atm_surf_air_precip_exceeding_10percentchance_total_mm_3hourly',
-    name: 'Forecast Rain 10% 3hr',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'forecast_rain_10pct_daily': {
-    id: 'atm_surf_air_precip_exceeding_10percentchance_total_mm_daily',
-    name: 'Forecast Rain 10% Daily',
-    category: 'Rain / forecast',
-    unit: 'mm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 15,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'forecast_rain_chance_3hr': {
-    id: 'atm_surf_air_precip_any_probability_percent_3hourly',
-    name: 'Chance of Rain 3hr',
-    category: 'Rain / forecast',
-    unit: '%',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'forecast_rain_chance_daily': {
-    id: 'atm_surf_air_precip_any_probability_percent_daily',
-    name: 'Chance of Rain Daily',
-    category: 'Rain / forecast',
-    unit: '%',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 15,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'wind_speed_kmh': {
-    id: 'atm_surf_air_wind_speed_10m_avg_kmh_3hourly',
-    name: 'Wind Speed',
-    category: 'Wind',
-    unit: 'km/h',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'wind_speed_kt': {
-    id: 'atm_surf_air_wind_speed_10m_avg_kt_3hourly',
-    name: 'Wind Speed',
-    category: 'Wind',
-    unit: 'kt',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'wind_direction': {
-    id: 'atm_surf_air_wind_dirn_10m_deg_t_3hourly',
-    name: 'Wind Direction',
-    category: 'Wind',
-    unit: 'deg',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'wave_total_height': {
-    id: 'ocn_surf_water_wave_total_height_m_3hourly',
-    name: 'Total Wave Height',
-    category: 'Waves',
-    unit: 'm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'swell_1_height': {
-    id: 'ocn_surf_water_swell_1st_height_m_3hourly',
-    name: 'Swell 1 Height',
-    category: 'Waves',
-    unit: 'm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'swell_1_direction': {
-    id: 'ocn_surf_water_swell_1st_dirn_deg_t_3hourly',
-    name: 'Swell 1 Direction',
-    category: 'Waves',
-    unit: 'deg',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'swell_2_height': {
-    id: 'ocn_surf_water_swell_2nd_height_m_3hourly',
-    name: 'Swell 2 Height',
-    category: 'Waves',
-    unit: 'm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'swell_2_direction': {
-    id: 'ocn_surf_water_swell_2nd_dirn_deg_t_3hourly',
-    name: 'Swell 2 Direction',
-    category: 'Waves',
-    unit: 'deg',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'wind_wave_height': {
-    id: 'ocn_surf_water_wave_height_wind_m_3hourly',
-    name: 'Wind Wave Height',
-    category: 'Waves',
-    unit: 'm',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'air_temperature': {
-    id: 'atm_surf_air_temp_cel_3hourly',
-    name: 'Air Temperature',
-    category: 'Temperature',
-    unit: '°C',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'feels_like': {
-    id: 'atm_surf_air_temp_apparent_cel_3hourly',
-    name: 'Feels Like',
-    category: 'Temperature',
-    unit: '°C',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'temperature_max_daily': {
-    id: 'atm_surf_air_temp_max_cel_daily',
-    name: 'Daytime Maximum',
-    category: 'Temperature',
-    unit: '°C',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 0,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'temperature_min_daily': {
-    id: 'atm_surf_air_temp_min_cel_daily',
-    name: 'Overnight Minimum',
-    category: 'Temperature',
-    unit: '°C',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 12,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'heatwave_severity': {
-    id: 'atm_surf_air_temp_heatwave_severity_code_daily',
-    name: 'Heatwave Severity',
-    category: 'Temperature',
-    unit: 'level',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackAnchorHourUtc: 0,
-    fallbackMaxFrames: 7,
-    initialFrame: 'first',
-  },
-  'relative_humidity': {
-    id: 'atm_surf_air_hum_relative_percent_3hourly',
-    name: 'Relative Humidity',
-    category: 'Humidity & UV',
-    unit: '%',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'dew_point': {
-    id: 'atm_surf_air_temp_dew_pt_cel_3hourly',
-    name: 'Dew Point',
-    category: 'Humidity & UV',
-    unit: '°C',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'uv_index': {
-    id: 'atm_surf_air_radiation_uv_clear_sky_code_3hourly',
-    name: 'UV Index',
-    category: 'Humidity & UV',
-    unit: 'index',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'uv_max_daily': {
-    id: 'atm_surf_air_radiation_uv_clear_sky_max_code_daily',
-    name: 'Max UV Daily',
-    category: 'Humidity & UV',
-    unit: 'index',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 1440,
-    fallbackLagMinutes: 0,
-    fallbackLeadMinutes: 1440,
-    fallbackAnchorHourUtc: 0,
-    fallbackMaxFrames: 4,
-    initialFrame: 'first',
-  },
-  'thunderstorms': {
-    id: 'atm_surf_air_weather_icon_thunderstorm_code_3hourly',
-    name: 'Thunderstorms',
-    category: 'Significant weather',
-    unit: 'icon',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'snow': {
-    id: 'atm_surf_air_weather_icon_snow_code_3hourly',
-    name: 'Snow',
-    category: 'Significant weather',
-    unit: 'icon',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'fog': {
-    id: 'atm_surf_air_weather_icon_fog_code_3hourly',
-    name: 'Fog',
-    category: 'Significant weather',
-    unit: 'icon',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-  'frost': {
-    id: 'atm_surf_air_weather_icon_frost_code_3hourly',
-    name: 'Frost',
-    category: 'Significant weather',
-    unit: 'icon',
-    tileMatrixSet: 'GoogleMapsCompatible_BoM_ADFD',
-    legendType: 'numerical',
-    timeMode: 'forecast',
-    fallbackStepMinutes: 180,
-    fallbackLagMinutes: 0,
-    initialFrame: 'first',
-  },
-};
 
 const DEFAULT_ENABLED_LAYERS = Object.keys(BOM_LAYERS);
 
 const RADAR_LEGEND = {
   gradient: 'linear-gradient(90deg, rgb(245, 245, 255) 0%, rgb(180, 180, 255) 7%, rgb(120, 120, 255) 14%, rgb(20, 20, 255) 21%, rgb(0, 216, 195) 28%, rgb(0, 150, 144) 35%, rgb(0, 102, 102) 42%, rgb(255, 255, 0) 49%, rgb(255, 200, 0) 56%, rgb(255, 150, 0) 63%, rgb(255, 100, 0) 70%, rgb(255, 0, 0) 77%, rgb(200, 0, 0) 84%, rgb(120, 0, 0) 91%, rgb(40, 0, 0) 100%)',
-};
-
-// TopLeftCorner (EPSG:3857) and matrix dimensions for each BOM WMTS tile matrix set.
-const TILE_MATRIX_SETS = {
-  GoogleMapsCompatible_BoM: [
-    { z: 0, tlx: 11584952, tly: 34168990.685578, w: 1, h: 1 },
-    { z: 1, tlx: 11584952, tly: 14131482.342789, w: 1, h: 1 },
-    { z: 2, tlx: 11584952, tly: 4112728.171395, w: 1, h: 1 },
-    { z: 3, tlx: 11584952, tly: 4112728.171395, w: 2, h: 2 },
-    { z: 4, tlx: 11584952, tly: 1608039.628546, w: 3, h: 3 },
-    { z: 5, tlx: 11584952, tly: 355695.357122, w: 6, h: 5 },
-    { z: 6, tlx: 11584952, tly: -270476.778591, w: 11, h: 9 },
-    { z: 7, tlx: 11584952, tly: -583562.846447, w: 22, h: 17 },
-    { z: 8, tlx: 11584952, tly: -740105.880375, w: 43, h: 33 },
-  ],
-  GoogleMapsCompatible_BoM_ADFD: [
-    { z: 0, tlx: 12462758.1832, tly: 34449560.527478, w: 1, h: 1 },
-    { z: 1, tlx: 12462758.1832, tly: 14412052.184689, w: 1, h: 1 },
-    { z: 2, tlx: 12462758.1832, tly: 4393298.013295, w: 1, h: 1 },
-    { z: 3, tlx: 12462758.1832, tly: -616079.072403, w: 1, h: 1 },
-    { z: 4, tlx: 12462758.1832, tly: -616079.072403, w: 2, h: 2 },
-    { z: 5, tlx: 12462758.1832, tly: -616079.072403, w: 4, h: 4 },
-    { z: 6, tlx: 12462758.1832, tly: -616079.072403, w: 8, h: 8 },
-    { z: 7, tlx: 12462758.1832, tly: -616079.072403, w: 16, h: 16 },
-    { z: 8, tlx: 12462758.1832, tly: -772622.106331, w: 31, h: 31 },
-  ],
 };
 
 const MIN_MAP_ZOOM = 3;
@@ -512,6 +65,8 @@ const SUN_ENTITY_ID = 'sun.sun';
 const HALF_EXTENT = 20037508.342789244;
 const WORLD_EXTENT = HALF_EXTENT * 2;
 const MAX_BOM_MAPSERVER_NATIVE_ZOOM = 10;
+const RADAR_COVERAGE_PANE = 'bomRadarCoveragePane';
+const RADAR_COVERAGE_PANE_Z_INDEX = 350;
 const BOM_REFERENCE_OVERLAY_BASE_URL = 'https://api.bom.gov.au/apikey/v1/mapping/overlays';
 const BOM_REFERENCE_OVERLAY_STYLES = {
   state_borders: { name: 'State borders' },
@@ -644,7 +199,7 @@ function hasOwnKey(object, key) {
 
 function getTileOffset(tileMatrixSet, z) {
   if (z < 0 || z > MAX_BOM_NATIVE_ZOOM) return null;
-  const info = TILE_MATRIX_SETS[tileMatrixSet]?.[z];
+  const info = BOM_TILE_MATRIX_SETS[tileMatrixSet]?.[z];
   if (!info) return null;
   const tileSpan = WORLD_EXTENT / Math.pow(2, z);
   const xOffset = Math.round((info.tlx + HALF_EXTENT) / tileSpan);
@@ -1206,244 +761,47 @@ ha-card {
 }
 `;
 
-let leafletLoadPromise = null;
-let capabilitiesLoadPromise = null;
-let capabilitiesCache = null;
-let capabilitiesFetchedAt = 0;
-
-function loadLeaflet() {
-  if (window.L) {
-    return Promise.resolve(window.L);
-  }
-
-  if (leafletLoadPromise) {
-    return leafletLoadPromise;
-  }
-
-  leafletLoadPromise = new Promise((resolve, reject) => {
-    const existingScript = document.querySelector('script[data-bom-radar-leaflet]');
-    if (existingScript) {
-      existingScript.addEventListener('load', () => resolve(window.L), { once: true });
-      existingScript.addEventListener('error', () => {
-        leafletLoadPromise = null;
-        existingScript.remove();
-        reject(new Error('Failed to load Leaflet'));
-      }, { once: true });
-      return;
-    }
-
-    const script = document.createElement('script');
-    script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-    script.dataset.bomRadarLeaflet = 'true';
-    script.onload = () => resolve(window.L);
-    script.onerror = () => {
-      leafletLoadPromise = null;
-      script.remove();
-      reject(new Error('Failed to load Leaflet'));
-    };
-    document.head.appendChild(script);
-  });
-
-  return leafletLoadPromise;
-}
-
-function getRoundedUtcDate(baseDate, stepMinutes, anchorHourUtc = null, allowFutureDailyAnchor = false) {
-  const rounded = new Date(baseDate);
-  rounded.setUTCSeconds(0, 0);
-
-  if (stepMinutes >= 1440) {
-    rounded.setUTCMinutes(0, 0, 0);
-    rounded.setUTCHours(anchorHourUtc ?? 0);
-    if (!allowFutureDailyAnchor && rounded > baseDate) {
-      rounded.setUTCDate(rounded.getUTCDate() - 1);
-    }
-    return rounded;
-  }
-
-  const totalMinutes = rounded.getUTCHours() * 60 + rounded.getUTCMinutes();
-  const snappedMinutes = Math.floor(totalMinutes / stepMinutes) * stepMinutes;
-  rounded.setUTCHours(Math.floor(snappedMinutes / 60), snappedMinutes % 60, 0, 0);
-  return rounded;
-}
-
-function generateFallbackTimestamps(layerConfig, count = 9) {
-  const now = new Date();
-  const stepMinutes = layerConfig?.fallbackStepMinutes || 5;
-  const lagMinutes = layerConfig?.fallbackLagMinutes || 0;
-  const leadMinutes = layerConfig?.fallbackLeadMinutes || 0;
-  const anchorHourUtc = layerConfig?.fallbackAnchorHourUtc ?? null;
-  const frameCount = Math.min(count, layerConfig?.fallbackMaxFrames || count);
-  const timeMode = layerConfig?.timeMode || 'past';
-  const allowFutureDailyAnchor = timeMode === 'forecast' && stepMinutes >= 1440;
-  const start = getRoundedUtcDate(
-    new Date(now.getTime() + (leadMinutes - lagMinutes) * 60 * 1000),
-    stepMinutes,
-    anchorHourUtc,
-    allowFutureDailyAnchor,
-  );
-
-  const timestamps = [];
-  for (let i = 0; i < frameCount; i++) {
-    const direction = timeMode === 'forecast' ? 1 : -1;
-    const stepIndex = timeMode === 'forecast' ? i : frameCount - 1 - i;
-    const t = new Date(start.getTime() + direction * stepIndex * stepMinutes * 60 * 1000);
-    timestamps.push(t.toISOString().replace(/\.\d{3}Z$/, 'Z'));
-  }
-  return timestamps;
-}
-
-function getChildByLocalName(parent, name) {
-  return Array.from(parent?.children || []).find((node) => node.localName === name) || null;
-}
-
-function getChildrenByLocalName(parent, name) {
-  return Array.from(parent?.children || []).filter((node) => node.localName === name);
-}
-
-function canFetchBomCapabilities() {
-  // BOM allows WMTS tile images from HA dashboards, but currently rejects
-  // browser capabilities fetches that include an Origin header.
-  return typeof window === 'undefined' &&
-    typeof fetch === 'function' &&
-    typeof DOMParser === 'function';
-}
-
-async function loadBomCapabilities() {
-  const cacheAgeMs = 4 * 60 * 1000;
-  if (capabilitiesCache && (Date.now() - capabilitiesFetchedAt) < cacheAgeMs) {
-    return capabilitiesCache;
-  }
-
-  if (capabilitiesLoadPromise) {
-    return capabilitiesLoadPromise;
-  }
-
-  capabilitiesLoadPromise = (async () => {
-    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    let timeoutId = null;
-
-    try {
-      const timeoutPromise = new Promise((_, reject) => {
-        timeoutId = setTimeout(() => {
-          controller?.abort();
-          reject(new Error('Capabilities request timed out'));
-        }, BOM_WMTS_CAPABILITIES_TIMEOUT_MS);
-      });
-      const requestPromise = (async () => {
-        const response = await fetch(BOM_WMTS_CAPABILITIES_URL, {
-          mode: 'cors',
-          ...(controller ? { signal: controller.signal } : {}),
-        });
-        if (!response.ok) {
-          throw new Error(`Capabilities request failed with ${response.status}`);
-        }
-        const xmlText = await response.text();
-        const xml = new DOMParser().parseFromString(xmlText, 'application/xml');
-        if (xml.querySelector('parsererror')) {
-          throw new Error('Capabilities response could not be parsed');
-        }
-        return xml;
-      });
-      const xml = await Promise.race([requestPromise(), timeoutPromise]);
-      capabilitiesCache = xml;
-      capabilitiesFetchedAt = Date.now();
-      capabilitiesLoadPromise = null;
-      return xml;
-    } finally {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    }
-  })()
-    .catch((err) => {
-      capabilitiesLoadPromise = null;
-      throw err;
-    });
-
-  return capabilitiesLoadPromise;
-}
-
-function extractLayerTimestamps(xml, layerId) {
-  const layers = Array.from(xml.getElementsByTagNameNS('*', 'Layer'));
-  const layer = layers.find((node) => getChildByLocalName(node, 'Identifier')?.textContent?.trim() === layerId);
-  if (!layer) {
-    return [];
-  }
-
-  const dimensions = getChildrenByLocalName(layer, 'Dimension');
-  const timeDimension = dimensions.find((node) => getChildByLocalName(node, 'Identifier')?.textContent?.trim() === 'time');
-  if (!timeDimension) {
-    return [];
-  }
-
-  const values = getChildrenByLocalName(timeDimension, 'Value')
-    .map((node) => node.textContent?.trim())
-    .filter(Boolean);
-
-  const defaultValue = getChildByLocalName(timeDimension, 'Default')?.textContent?.trim();
-  if (defaultValue && !values.includes(defaultValue)) {
-    values.push(defaultValue);
-  }
-
-  return values.sort();
-}
-
-function selectLayerTimestamps(layerConfig, publishedTimes, count) {
-  if (!publishedTimes.length) {
-    return [];
-  }
-
-  if ((layerConfig?.timeMode || 'past') === 'forecast') {
-    const now = Date.now();
-    const firstFutureIndex = publishedTimes.findIndex((value) => new Date(value).getTime() >= now);
-    const startIndex = firstFutureIndex === -1
-      ? Math.max(0, publishedTimes.length - count)
-      : Math.max(0, firstFutureIndex - 1);
-    return publishedTimes.slice(startIndex, startIndex + count);
-  }
-
-  return publishedTimes.slice(-count);
-}
-
-function hasFreshPublishedTimestamps(layerConfig, publishedTimes) {
-  if (!publishedTimes.length) {
-    return false;
-  }
-
-  const timeMode = layerConfig?.timeMode || 'past';
-  const stepMinutes = layerConfig?.fallbackStepMinutes || 5;
-
-  const latestTimeMs = new Date(publishedTimes[publishedTimes.length - 1]).getTime();
-  if (!Number.isFinite(latestTimeMs)) {
-    return false;
-  }
-
-  const minFreshnessMinutes = timeMode === 'forecast' ? 360 : 45;
-  const maxAgeMs = Math.max(minFreshnessMinutes, stepMinutes * 2) * 60 * 1000;
-  return latestTimeMs >= Date.now() - maxAgeMs;
-}
-
-async function getLayerTimestamps(layerConfig, count = 9) {
-  if (canFetchBomCapabilities()) {
-    try {
-      const capabilities = await loadBomCapabilities();
-      const publishedTimes = extractLayerTimestamps(capabilities, layerConfig.id);
-      if (hasFreshPublishedTimestamps(layerConfig, publishedTimes)) {
-        return selectLayerTimestamps(layerConfig, publishedTimes, count);
-      }
-    } catch (err) {
-      console.warn(`BOM Radar Card: Falling back to generated timestamps for ${layerConfig.id}`, err);
-    }
-  }
-
-  return generateFallbackTimestamps(layerConfig, count);
-}
-
 function bomTileUrl(layerId, tileMatrixSet, z, col, row, time) {
   return `${BOM_WMTS_BASE}?SERVICE=WMTS&REQUEST=GetTile&VERSION=1.0.0` +
     `&LAYER=${layerId}&STYLE=default&FORMAT=image/png` +
     `&TILEMATRIXSET=${tileMatrixSet}&TILEMATRIX=${z}` +
     `&TILEROW=${row}&TILECOL=${col}&time=${time}`;
+}
+
+const timestampAvailabilityResolvers = new Map();
+
+function getTimestampAvailabilityResolver(layerConfig) {
+  const cacheKey = `${layerConfig.id}\u0000${layerConfig.tileMatrixSet}`;
+  let resolver = timestampAvailabilityResolvers.get(cacheKey);
+  if (resolver) return resolver;
+
+  resolver = createTimestampAvailabilityResolver({
+    probe: createImageAvailabilityProbe({
+      buildUrl: (timestamp) => bomTileUrl(
+        layerConfig.id,
+        layerConfig.tileMatrixSet,
+        0,
+        0,
+        0,
+        timestamp,
+      ),
+      timeoutMs: 1500,
+    }),
+  });
+  timestampAvailabilityResolvers.set(cacheKey, resolver);
+  return resolver;
+}
+
+async function getLayerTimestamps(layerConfig, count = 9, isCurrent) {
+  const timestamps = generateFallbackTimestamps(layerConfig, count);
+  if (!timestamps.length) return timestamps;
+
+  return getTimestampAvailabilityResolver(layerConfig).resolve({
+    cacheKey: `${layerConfig.id}\u0000${layerConfig.tileMatrixSet}`,
+    timestamps,
+    stepMinutes: layerConfig.fallbackStepMinutes || 5,
+    isCurrent,
+  });
 }
 
 function getBomTileUrlForCoords(layerId, tileMatrixSet, coords, time) {
@@ -1478,20 +836,7 @@ function createBomTileLayer(L, layerId, tileMatrixSet, time, options = {}) {
         setTimeout(() => done(null, tile), 0);
         return tile;
       }
-      let isDone = false;
-      const finish = () => {
-        if (isDone) return;
-        isDone = true;
-        done(null, tile);
-      };
-      tile.onload = finish;
-      tile.onerror = () => {
-        // Silently show transparent tile on error (e.g. timestamp not yet available)
-        tile.onerror = null;
-        tile.src = TRANSPARENT_PIXEL;
-        finish();
-      };
-      tile.src = url;
+      loadImageWithRetry(tile, url, TRANSPARENT_PIXEL, () => done(null, tile));
       return tile;
     },
   });
@@ -1599,7 +944,7 @@ class LightningOverlay {
       pane.style.zIndex = String(LIGHTNING_PANE_Z);
       pane.style.pointerEvents = 'none';
     }
-    this._renderer = L.canvas({ pane: LIGHTNING_PANE, padding: 0.5 });
+    this._renderer = guardLightningRenderer(L.canvas({ pane: LIGHTNING_PANE, padding: 0.5 }));
     this._layer = L.layerGroup([]).addTo(this._map);
     this._ageTimer = setInterval(() => this._refreshAges(), LIGHTNING_AGE_TICK_MS);
     this.updateHass(hass);
@@ -1710,7 +1055,7 @@ class LightningOverlay {
     if (this._ageTimer) { clearInterval(this._ageTimer); this._ageTimer = null; }
     if (this._rafId != null && typeof cancelAnimationFrame === 'function') { cancelAnimationFrame(this._rafId); }
     this._rafId = null;
-    if (this._layer && this._map?.hasLayer(this._layer)) this._map.removeLayer(this._layer);
+    removeLightningLayers(this._map, this._renderer, this._layer);
     this._layer = null;
     this._renderer = null;
     this._strikes.clear();
@@ -1726,6 +1071,7 @@ class BomRadarCard extends HTMLElement {
     this._map = null;
     this._L = null;
     this._radarLayers = [];
+    this._committedRadarLayerKey = null;
     this._currentFrame = 0;
     this._playing = true;
     this._animationTimer = null;
@@ -1734,13 +1080,16 @@ class BomRadarCard extends HTMLElement {
     this._updateTimer = null;
     this._resizeObserver = null;
     this._visibilityObserver = null;
+    this._windowResizeHandler = null;
     this._layerSwitcher = null;
     this._bomReferenceLayers = [];
+    this._radarCoverageLayer = null;
     this._labelLayer = null;
     this._lastRadarDisplayZoom = null;
     this._pendingZoomRebuild = false;
     this._previousDisplayZoom = null;
     this._initToken = 0;
+    this._radarLoadToken = 0;
     this._resolvedBasemapStyle = null;
     this._lightning = null;
   }
@@ -1809,6 +1158,7 @@ class BomRadarCard extends HTMLElement {
       show_legend: config.show_legend !== false,
       show_bom_boundaries: config.show_bom_boundaries === true,
       bom_reference_layers: getBomReferenceLayerKeys(config),
+      show_radar_coverage: config.show_radar_coverage === true,
       square_style: config.square_style === true,
       show_attribution: config.show_attribution !== false,
       show_layer_label: config.show_layer_label === true,
@@ -1875,14 +1225,7 @@ class BomRadarCard extends HTMLElement {
   }
 
   getGridOptions() {
-    const rows = Math.max(4, Math.ceil((this._getEstimatedCardHeight() + 8) / 64));
-    return {
-      rows,
-      min_rows: Math.max(4, rows - 1),
-      columns: 12,
-      min_columns: 6,
-      max_columns: 12,
-    };
+    return getFixedHeightGridOptions(this._getEstimatedCardHeight());
   }
 
   static getConfigElement() {
@@ -1923,13 +1266,7 @@ class BomRadarCard extends HTMLElement {
 
     try {
       this._renderTopOverlays();
-      const L = await loadLeaflet();
-      if (!this._isCurrentInit(initToken)) {
-        if (this._initToken === initToken) {
-          this._initialized = false;
-        }
-        return;
-      }
+      const L = Leaflet;
       this._L = L;
       await this._initMap(L, initToken);
       if (!this._isCurrentInit(initToken)) {
@@ -2006,7 +1343,8 @@ class BomRadarCard extends HTMLElement {
     L.tileLayer(basemapConfig.baseUrl, baseLayerOptions).addTo(this._map);
 
     // Load radar data (middle layer)
-    const loadedRadar = await this._loadRadarData(L, initToken);
+    const radarLoadToken = ++this._radarLoadToken;
+    const loadedRadar = await this._loadRadarData(L, initToken, radarLoadToken);
     if (!loadedRadar || !this._isCurrentInit(initToken) || !this._map) return;
 
     this._addBomReferenceLayers(L);
@@ -2095,6 +1433,11 @@ class BomRadarCard extends HTMLElement {
       });
       this._visibilityObserver.observe(container);
     }
+    this._windowResizeHandler = () => {
+      this._scheduleMapResize();
+      this._fitLayerSwitcherPanel();
+    };
+    window.addEventListener('resize', this._windowResizeHandler);
     this._scheduleMapResize();
   }
 
@@ -2129,6 +1472,39 @@ class BomRadarCard extends HTMLElement {
         }).addTo(this._map);
       })
       .filter(Boolean);
+  }
+
+  _syncRadarCoverageLayer(L = this._L) {
+    if (!this._map || !L) return;
+
+    if (this._radarCoverageLayer && !shouldShowRadarCoverage(this._config)) {
+      if (this._map.hasLayer(this._radarCoverageLayer)) {
+        this._map.removeLayer(this._radarCoverageLayer);
+      }
+      this._radarCoverageLayer = null;
+    }
+
+    if (!this._radarCoverageLayer && shouldShowRadarCoverage(this._config)) {
+      const coveragePane = this._map.getPane(RADAR_COVERAGE_PANE) || this._map.createPane(RADAR_COVERAGE_PANE);
+      coveragePane.style.zIndex = String(RADAR_COVERAGE_PANE_Z_INDEX);
+      coveragePane.style.pointerEvents = 'none';
+      let coverageLayer = null;
+      try {
+        coverageLayer = L.tileLayer(RADAR_COVERAGE_TILE_URL, {
+          ...RADAR_COVERAGE_TILE_OPTIONS,
+          attribution: BOM_ATTRIBUTION,
+          maxZoom: this._config.max_display_zoom,
+          pane: RADAR_COVERAGE_PANE,
+        });
+        coverageLayer.addTo(this._map);
+        this._radarCoverageLayer = coverageLayer;
+      } catch (error) {
+        if (coverageLayer && this._map?.hasLayer(coverageLayer)) {
+          this._map.removeLayer(coverageLayer);
+        }
+        console.warn('BOM Radar Card: Failed to add radar coverage layer', error);
+      }
+    }
   }
 
   _syncReferenceLayerOrder() {
@@ -2220,6 +1596,12 @@ class BomRadarCard extends HTMLElement {
     this._map.on('click movestart zoomstart', () => this._closeLayerSwitcher());
   }
 
+  _getDisplayedRadarLayerKey() {
+    return hasOwnKey(BOM_LAYERS, this._committedRadarLayerKey)
+      ? this._committedRadarLayerKey
+      : this._config.layer;
+  }
+
   _renderTopOverlays() {
     const content = this.shadowRoot.querySelector('.card-content');
     const map = this.shadowRoot.getElementById('map');
@@ -2228,8 +1610,9 @@ class BomRadarCard extends HTMLElement {
     content.querySelector('.layer-badge')?.remove();
     content.querySelector('.legend-card')?.remove();
 
-    const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
-    const legendConfig = this._config.show_legend ? getLegendConfig(this._config.layer) : null;
+    const displayedLayerKey = this._getDisplayedRadarLayerKey();
+    const layerConfig = getBomLayerConfig(displayedLayerKey) || BOM_LAYERS.reflectivity;
+    const legendConfig = this._config.show_legend ? getLegendConfig(displayedLayerKey) : null;
 
     content.classList.toggle('has-top-legend', Boolean(legendConfig));
 
@@ -2237,7 +1620,7 @@ class BomRadarCard extends HTMLElement {
       map.insertAdjacentHTML('beforebegin', `<div class="layer-badge">${layerConfig.name}</div>`);
     }
     if (legendConfig) {
-      map.insertAdjacentHTML('beforebegin', renderLegendHtml(this._config.layer));
+      map.insertAdjacentHTML('beforebegin', renderLegendHtml(displayedLayerKey));
     }
   }
 
@@ -2268,11 +1651,12 @@ class BomRadarCard extends HTMLElement {
 
   _syncLayerSwitcherState() {
     if (!this._layerSwitcher) return;
-    const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
+    const displayedLayerKey = this._getDisplayedRadarLayerKey();
+    const layerConfig = getBomLayerConfig(displayedLayerKey) || BOM_LAYERS.reflectivity;
     this._layerSwitcher.button.title = `Weather layer: ${layerConfig.name}`;
     this._layerSwitcher.button.setAttribute('aria-label', `Weather layer: ${layerConfig.name}`);
     this._layerSwitcher.panel.querySelectorAll('.bom-layer-option').forEach((option) => {
-      const isActive = option.dataset.layer === this._config.layer;
+      const isActive = option.dataset.layer === displayedLayerKey;
       option.classList.toggle('is-active', isActive);
       option.setAttribute('aria-pressed', String(isActive));
     });
@@ -2284,60 +1668,100 @@ class BomRadarCard extends HTMLElement {
       return;
     }
 
+    const previousLayer = this._config.layer;
     this._config.layer = layerKey;
-    this._renderTopOverlays();
-    this._syncLayerSwitcherState();
     this._closeLayerSwitcher();
 
-    if (!this._L || !this._map) return;
+    if (!this._L || !this._map) {
+      this._renderTopOverlays();
+      this._syncLayerSwitcherState();
+      return;
+    }
 
     try {
-      await this._refreshData();
+      await this._refreshData({ throwOnError: true });
     } catch (err) {
+      if (this._config.layer === layerKey) {
+        this._config.layer = hasOwnKey(BOM_LAYERS, this._committedRadarLayerKey)
+          ? this._committedRadarLayerKey
+          : previousLayer;
+        this._renderTopOverlays();
+        this._syncLayerSwitcherState();
+        this._syncRadarCoverageLayer();
+        this._buildTimeline();
+        this._updateTimeLabel();
+      }
       console.warn(`BOM Radar Card: Failed to switch to layer "${layerKey}"`, err);
     }
   }
 
-  async _loadRadarData(L, initToken = this._initToken) {
+  async _loadRadarData(
+    L,
+    initToken = this._initToken,
+    radarLoadToken = ++this._radarLoadToken,
+  ) {
     const layerKey = this._config.layer;
     const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
-    const timestamps = await getLayerTimestamps(layerConfig, this._config.frame_count);
+    const isCurrent = () => (
+      this._isCurrentInit(initToken) &&
+      this._radarLoadToken === radarLoadToken &&
+      this._map &&
+      this._config.layer === layerKey
+    );
+    const timestamps = await getLayerTimestamps(layerConfig, this._config.frame_count, isCurrent);
 
-    if (!this._isCurrentInit(initToken) || !this._map || !timestamps.length || this._config.layer !== layerKey) {
+    if (!isCurrent() || !timestamps.length) {
       return false;
     }
 
-    this._timestamps = timestamps;
-    this._currentFrame = layerConfig.initialFrame === 'first' ? 0 : this._timestamps.length - 1;
-    this._replaceRadarLayers(L, layerConfig);
+    const initialFrame = layerConfig.initialFrame === 'first' ? 0 : timestamps.length - 1;
+    this._replaceRadarLayers(L, layerConfig, timestamps, initialFrame, layerKey);
+    this._syncRadarCoverageLayer(L);
+    this._renderTopOverlays();
+    this._syncLayerSwitcherState();
     this._updateTimeline();
     this._updateTimeLabel();
     return true;
   }
 
-  _replaceRadarLayers(L, layerConfig) {
-    const activeFrame = Math.min(this._currentFrame, this._timestamps.length - 1);
+  _replaceRadarLayers(
+    L,
+    layerConfig,
+    timestamps = this._timestamps,
+    currentFrame = this._currentFrame,
+    layerKey = this._config.layer,
+  ) {
+    const activeFrame = Math.min(currentFrame, timestamps.length - 1);
+    const previousLayers = this._radarLayers;
+    const nextLayers = [];
 
-    // Remove old layers
-    this._radarLayers.forEach(layer => {
-      if (this._map.hasLayer(layer)) this._map.removeLayer(layer);
-    });
-    this._radarLayers = [];
-
-    for (let i = 0; i < this._timestamps.length; i++) {
-      const time = this._timestamps[i];
-      const layer = createBomTileLayer(L, layerConfig.id, layerConfig.tileMatrixSet, time, {
-        opacity: i === activeFrame ? this._config.radar_opacity : 0,
-        maxZoom: this._config.max_display_zoom,
-        maxNativeZoom: MAX_BOM_NATIVE_ZOOM,
-        minZoom: MIN_MAP_ZOOM,
+    try {
+      for (let i = 0; i < timestamps.length; i++) {
+        const time = timestamps[i];
+        const layer = createBomTileLayer(L, layerConfig.id, layerConfig.tileMatrixSet, time, {
+          opacity: i === activeFrame ? this._config.radar_opacity : 0,
+          maxZoom: this._config.max_display_zoom,
+          maxNativeZoom: MAX_BOM_NATIVE_ZOOM,
+          minZoom: MIN_MAP_ZOOM,
+        });
+        nextLayers.push(layer);
+        layer.addTo(this._map);
+      }
+      this._syncReferenceLayerOrder();
+    } catch (error) {
+      nextLayers.forEach((layer) => {
+        if (this._map?.hasLayer(layer)) this._map.removeLayer(layer);
       });
-      layer.addTo(this._map);
-      this._radarLayers.push(layer);
+      throw error;
     }
 
+    previousLayers.forEach((layer) => {
+      if (this._map.hasLayer(layer)) this._map.removeLayer(layer);
+    });
+    this._radarLayers = nextLayers;
+    this._timestamps = timestamps;
     this._currentFrame = activeFrame;
-    this._syncReferenceLayerOrder();
+    this._committedRadarLayerKey = layerKey;
   }
 
   _shouldRebuildRadarOnZoom(previousZoom, nextZoom) {
@@ -2349,28 +1773,32 @@ class BomRadarCard extends HTMLElement {
 
   async _rebuildRadarLayers() {
     if (!this._L || !this._map || !this._timestamps.length) return;
-    const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
-    this._replaceRadarLayers(this._L, layerConfig);
+    const layerKey = this._getDisplayedRadarLayerKey();
+    const layerConfig = getBomLayerConfig(layerKey) || BOM_LAYERS.reflectivity;
+    this._replaceRadarLayers(this._L, layerConfig, this._timestamps, this._currentFrame, layerKey);
   }
 
-  async _refreshData() {
+  async _refreshData({ throwOnError = false } = {}) {
     if (!this._L || !this._map) return;
     const refreshToken = this._initToken;
+    const radarLoadToken = ++this._radarLoadToken;
     const wasPlaying = this._playing;
     const refreshLayer = this._config.layer;
 
     try {
       if (wasPlaying) this._stopAnimation();
-      const loadedRadar = await this._loadRadarData(this._L, refreshToken);
+      const loadedRadar = await this._loadRadarData(this._L, refreshToken, radarLoadToken);
       if (!loadedRadar || !this._isCurrentInit(refreshToken) || !this._map) return;
       this._buildTimeline();
     } catch (err) {
+      if (throwOnError) throw err;
       console.warn('BOM Radar Card: Refresh failed', err);
     } finally {
       if (
         wasPlaying &&
         this._playing &&
         this._isCurrentInit(refreshToken) &&
+        this._radarLoadToken === radarLoadToken &&
         this._map &&
         this._timestamps.length &&
         this._config.layer === refreshLayer
@@ -2401,9 +1829,9 @@ class BomRadarCard extends HTMLElement {
     if (!timeline) return;
 
     timeline.innerHTML = '';
+    const layerConfig = getBomLayerConfig(this._getDisplayedRadarLayerKey()) || BOM_LAYERS.reflectivity;
     for (let i = 0; i < this._timestamps.length; i++) {
       const dot = document.createElement('button');
-      const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
       dot.className = 'frame-dot' + (i === this._currentFrame ? ' active' : i < this._currentFrame ? ' past' : '');
       dot.type = 'button';
       dot.setAttribute('aria-label', `Show ${formatLayerTimestamp(layerConfig, this._timestamps[i])}`);
@@ -2442,7 +1870,7 @@ class BomRadarCard extends HTMLElement {
     const label = this.shadowRoot.getElementById('time-label');
     if (!label || !this._timestamps[this._currentFrame]) return;
 
-    const layerConfig = getBomLayerConfig(this._config.layer) || BOM_LAYERS.reflectivity;
+    const layerConfig = getBomLayerConfig(this._getDisplayedRadarLayerKey()) || BOM_LAYERS.reflectivity;
     label.textContent = formatLayerTimestamp(layerConfig, this._timestamps[this._currentFrame]);
   }
 
@@ -2476,6 +1904,7 @@ class BomRadarCard extends HTMLElement {
   }
 
   _cleanupMap() {
+    this._radarLoadToken += 1;
     this._stopAnimation();
     this._closeLayerSwitcher();
     if (this._updateTimer) {
@@ -2490,6 +1919,10 @@ class BomRadarCard extends HTMLElement {
       this._visibilityObserver.disconnect();
       this._visibilityObserver = null;
     }
+    if (this._windowResizeHandler) {
+      window.removeEventListener('resize', this._windowResizeHandler);
+      this._windowResizeHandler = null;
+    }
     if (this._lightning) {
       this._lightning.destroy();
       this._lightning = null;
@@ -2500,8 +1933,10 @@ class BomRadarCard extends HTMLElement {
     }
     this._layerSwitcher = null;
     this._bomReferenceLayers = [];
+    this._radarCoverageLayer = null;
     this._labelLayer = null;
     this._radarLayers = [];
+    this._committedRadarLayerKey = null;
     this._timestamps = [];
     this._currentFrame = 0;
   }
@@ -2542,6 +1977,8 @@ class BomRadarCardEditor extends HTMLElement {
     const enabledLayerKeys = getEnabledLayerKeys(cfg);
     const groupedLayers = getGroupedLayerEntries(enabledLayerKeys);
     const bomReferenceLayerKeys = getBomReferenceLayerKeys(cfg);
+    const activeEditorLayer = enabledLayerKeys.includes(cfg.layer) ? cfg.layer : enabledLayerKeys[0] || 'reflectivity';
+    const radarCoverageAvailable = supportsRadarCoverageLayer(activeEditorLayer);
     const blitzLoaded = isBlitzortungLoaded(this._hass);
     const additionalBomReferenceLayers = Object.entries(BOM_REFERENCE_OVERLAY_STYLES)
       .filter(([key]) => key !== 'state_borders');
@@ -2657,7 +2094,7 @@ class BomRadarCardEditor extends HTMLElement {
           <div class="row">
             <label>Basemap API Key (Optional)</label>
             <input type="password" id="basemap_api_key" value="${escapeHtml(cfg.basemap_api_key || '')}" autocomplete="off">
-            <div class="help-text">Not needed for BOM or CARTO. Stadia Maps and Esri may require a key depending on the selected style and how your Home Assistant instance is hosted. See the <a href="https://github.com/AshtonAU/bom-radar-card#getting-basemap-provider-keys" target="_blank" rel="noreferrer">README provider-key guide</a>.</div>
+            <div class="help-text">Not needed for BOM or CARTO. Stadia Maps requires domain authentication or a browser API key; Esri may require a browser API key for the selected service. See the <a href="https://github.com/AshtonAU/bom-radar-card#getting-basemap-provider-keys" target="_blank" rel="noreferrer">README provider-key guide</a>.</div>
           </div>
           ${this._toggle('show_bom_boundaries', 'BOM state borders overlay', bomReferenceLayerKeys.includes('state_borders'))}
           <div class="row">
@@ -2715,6 +2152,9 @@ class BomRadarCardEditor extends HTMLElement {
           ${this._toggle('show_layer_switcher', 'Layer switcher', cfg.show_layer_switcher !== false)}
           ${this._toggle('show_playback', 'Playback controls', cfg.show_playback !== false)}
           ${this._toggle('show_legend', 'Radar legend', cfg.show_legend !== false)}
+          ${radarCoverageAvailable
+            ? this._toggle('show_radar_coverage', 'Shade areas outside radar coverage', cfg.show_radar_coverage === true)
+            : ''}
           ${this._toggle('square_style', 'Square style', cfg.square_style === true)}
           ${this._toggle('show_layer_label', 'Layer label', cfg.show_layer_label === true)}
           ${this._toggle('show_attribution', 'Attribution', cfg.show_attribution !== false)}
@@ -2766,7 +2206,7 @@ class BomRadarCardEditor extends HTMLElement {
     const toggles = [
       'show_marker', 'show_zoom', 'show_recenter', 'show_layer_switcher', 'show_playback',
       'show_legend', 'show_bom_boundaries', 'square_style', 'show_layer_label', 'show_attribution', 'allow_overzoom', 'use_custom_accent_color', 'use_custom_location_color',
-      'show_lightning', 'lightning_pulse',
+      'show_lightning', 'lightning_pulse', 'show_radar_coverage',
     ];
     toggles.forEach(id => {
       const el = this.shadowRoot.getElementById(id);
@@ -2893,7 +2333,7 @@ class BomRadarCardEditor extends HTMLElement {
     const toggleFields = [
       'show_marker', 'show_zoom', 'show_recenter', 'show_layer_switcher', 'show_playback',
       'show_legend', 'show_bom_boundaries', 'square_style', 'show_layer_label', 'show_attribution', 'allow_overzoom',
-      'show_lightning', 'lightning_pulse',
+      'show_lightning', 'lightning_pulse', 'show_radar_coverage',
     ];
     toggleFields.forEach(id => {
       const el = get(id);
@@ -2906,7 +2346,11 @@ class BomRadarCardEditor extends HTMLElement {
     }
 
     this._config = config;
-    this.dispatchEvent(new CustomEvent('config-changed', { detail: { config } }));
+    this.dispatchEvent(new CustomEvent('config-changed', {
+      bubbles: true,
+      composed: true,
+      detail: { config },
+    }));
   }
 }
 

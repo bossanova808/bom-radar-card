@@ -1,7 +1,7 @@
 /**
- * Pure, DOM-free helpers for the Blitzortung lightning overlay.
- * No Leaflet / window / document references, so this module is unit-testable
- * under Node's built-in test runner.
+ * Testable helpers for the Blitzortung lightning overlay.
+ * They do not read browser globals; the lifecycle helper operates only on
+ * Leaflet-shaped objects supplied by the caller.
  */
 
 export const BLITZORTUNG_SOURCE = 'blitzortung';
@@ -99,4 +99,28 @@ export function pulseScale(t) {
   if (t >= 1) return 1;
   const k = t < 0 ? 0 : t;
   return 1 + (1 - k) * (1 - k);
+}
+
+export function removeLightningLayers(map, renderer, layerGroup) {
+  // Removing paths can queue a canvas redraw. Remove the explicitly owned
+  // renderer first so Leaflet cancels any pending redraw and path cleanup
+  // cannot schedule another one against a destroyed canvas context.
+  if (renderer && map?.hasLayer(renderer)) map.removeLayer(renderer);
+  if (layerGroup && map?.hasLayer(layerGroup)) map.removeLayer(layerGroup);
+}
+
+export function guardLightningRenderer(renderer) {
+  const redraw = renderer._redraw;
+  renderer._redraw = function guardedLightningRedraw(...args) {
+    // Leaflet 1.9.4 can leave an older canvas redraw queued after a synchronous
+    // resize redraw clears its tracked request. Ignore that orphan if Home
+    // Assistant disconnects the card before the browser runs the callback.
+    if (!this._ctx) {
+      this._redrawRequest = null;
+      this._redrawBounds = null;
+      return undefined;
+    }
+    return redraw.apply(this, args);
+  };
+  return renderer;
 }

@@ -5,6 +5,7 @@ node_modules/
 AGENTS.md
 .codex
 .deepsec/
+.tmp/
 
 # Local verification artifacts
 test/harness/
