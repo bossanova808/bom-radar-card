@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- `basemap_api_key` is now applied to CARTO tile requests (`?key=...`), matching
+  the existing Stadia Maps and Esri behaviour.
+
 ## v1.11.0 - 2026-08-16
 
 v1.11.0 is a backward-compatible reliability release based on a fresh review
